@@ -146,6 +146,17 @@ def restart() -> None:
 
 
 @app.command()
+def dashboard() -> None:
+    """Open the web dashboard in the default browser."""
+    import webbrowser
+
+    cfg = load_config()
+    url = f"http://127.0.0.1:{cfg.daemon.dashboard_port}"
+    console.print(f"Opening dashboard at [bold]{url}[/bold]")
+    webbrowser.open(url)
+
+
+@app.command()
 def status() -> None:
     """Show the current daemon status."""
     result = send_command("status")

@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 
 if TYPE_CHECKING:
+    from spondex.storage.database import Database
     from spondex.sync.engine import SyncEngine
     from spondex.sync.scheduler import SyncScheduler
 
@@ -50,6 +51,7 @@ class DaemonState:
         self.shutdown_event: asyncio.Event = asyncio.Event()
         self.engine: SyncEngine | None = None
         self.scheduler: SyncScheduler | None = None
+        self.db: Database | None = None
 
     # -- queries ------------------------------------------------------------
 

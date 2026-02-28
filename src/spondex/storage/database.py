@@ -417,6 +417,94 @@ class Database:
         row = await cur.fetchone()
         return self._row_to_sync_run(row) if row else None
 
+    # -- counts & pagination --------------------------------------------------
+
+    async def count_track_mappings(self, search: str | None = None) -> int:
+        if search:
+            like = f"%{search}%"
+            cur = await self.conn.execute(
+                "SELECT COUNT(*) as cnt FROM track_mapping WHERE artist LIKE ? OR title LIKE ?",
+                (like, like),
+            )
+        else:
+            cur = await self.conn.execute("SELECT COUNT(*) as cnt FROM track_mapping")
+        row = await cur.fetchone()
+        return row["cnt"]
+
+    async def count_unmatched(self) -> int:
+        cur = await self.conn.execute("SELECT COUNT(*) as cnt FROM unmatched")
+        row = await cur.fetchone()
+        return row["cnt"]
+
+    async def count_collections(self) -> int:
+        cur = await self.conn.execute("SELECT COUNT(*) as cnt FROM collection")
+        row = await cur.fetchone()
+        return row["cnt"]
+
+    async def count_sync_runs(self) -> int:
+        cur = await self.conn.execute("SELECT COUNT(*) as cnt FROM sync_runs")
+        row = await cur.fetchone()
+        return row["cnt"]
+
+    async def list_track_mappings_paginated(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        search: str | None = None,
+    ) -> list[TrackMapping]:
+        if search:
+            like = f"%{search}%"
+            cur = await self.conn.execute(
+                "SELECT * FROM track_mapping WHERE artist LIKE ? OR title LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?",
+                (like, like, limit, offset),
+            )
+        else:
+            cur = await self.conn.execute(
+                "SELECT * FROM track_mapping ORDER BY id DESC LIMIT ? OFFSET ?",
+                (limit, offset),
+            )
+        rows = await cur.fetchall()
+        return [self._row_to_track_mapping(r) for r in rows]
+
+    async def list_unmatched_paginated(
+        self, limit: int = 50, offset: int = 0
+    ) -> list[Unmatched]:
+        cur = await self.conn.execute(
+            "SELECT * FROM unmatched ORDER BY id DESC LIMIT ? OFFSET ?",
+            (limit, offset),
+        )
+        rows = await cur.fetchall()
+        return [self._row_to_unmatched(r) for r in rows]
+
+    async def list_sync_runs_paginated(
+        self, limit: int = 20, offset: int = 0
+    ) -> list[SyncRun]:
+        cur = await self.conn.execute(
+            "SELECT * FROM sync_runs ORDER BY id DESC LIMIT ? OFFSET ?",
+            (limit, offset),
+        )
+        rows = await cur.fetchall()
+        return [self._row_to_sync_run(r) for r in rows]
+
+    async def list_collections_with_counts(self) -> list[dict]:
+        cur = await self.conn.execute(
+            """
+            SELECT c.*, COUNT(ct.track_mapping_id) as track_count
+            FROM collection c
+            LEFT JOIN collection_track ct ON ct.collection_id = c.id AND ct.removed_at IS NULL
+            GROUP BY c.id
+            ORDER BY c.id
+            """
+        )
+        rows = await cur.fetchall()
+        return [
+            {
+                **self._row_to_collection(r).model_dump(),
+                "track_count": r["track_count"],
+            }
+            for r in rows
+        ]
+
     # -- batch helpers --------------------------------------------------------
 
     async def get_track_mappings_by_ids(

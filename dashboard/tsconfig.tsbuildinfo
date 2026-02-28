@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/api.ts","./src/main.tsx","./src/types.ts","./src/usewebsocket.ts","./src/vite-env.d.ts","./src/components/configpanel.tsx","./src/components/controls.tsx","./src/components/statsbar.tsx","./src/components/statuscard.tsx","./src/components/synchistory.tsx","./src/components/tracktable.tsx","./src/components/unmatchedtable.tsx"],"version":"5.9.3"}

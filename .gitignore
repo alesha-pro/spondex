@@ -11,3 +11,8 @@ wheels/
 docs
 .ruff_cache
 .pytest_cache
+
+# Dashboard
+dashboard/node_modules/
+src/spondex/server/static/*
+!src/spondex/server/static/.gitkeep

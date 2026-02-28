@@ -230,6 +230,7 @@ class Daemon:
     async def _async_main(self) -> None:
         """Async entry point: start the RPC server and wait for shutdown."""
         from spondex.config import load_config
+        from spondex.server.dashboard import create_dashboard_app
         from spondex.server.rpc import DaemonState, create_rpc_app
         from spondex.storage import Database
         from spondex.sync.engine import SyncEngine
@@ -241,6 +242,8 @@ class Daemon:
         # Initialise the database.
         db = Database(self.base_dir / "spondex.db")
         await db.connect()
+
+        state.db = db
 
         # Initialise sync engine and scheduler.
         engine = SyncEngine(app_config, db)
@@ -263,18 +266,30 @@ class Daemon:
 
         ensure_clean_socket(self.socket_path)
 
-        app = create_rpc_app(state)
-        config = uvicorn.Config(
-            app,
+        # RPC server on Unix domain socket.
+        rpc_app = create_rpc_app(state)
+        rpc_config = uvicorn.Config(
+            rpc_app,
             uds=str(self.socket_path),
             log_level="info",
             loop="asyncio",
         )
-        server = uvicorn.Server(config)
+        rpc_server = uvicorn.Server(rpc_config)
 
-        # Run the server in a background task so we can also watch the
-        # shutdown event.
-        server_task = asyncio.create_task(server.serve())
+        # Dashboard server on TCP.
+        dashboard_app = create_dashboard_app(state, db)
+        dashboard_config = uvicorn.Config(
+            dashboard_app,
+            host="127.0.0.1",
+            port=app_config.daemon.dashboard_port,
+            log_level="info",
+            loop="asyncio",
+        )
+        dashboard_server = uvicorn.Server(dashboard_config)
+
+        # Run both servers in background tasks.
+        rpc_task = asyncio.create_task(rpc_server.serve())
+        dashboard_task = asyncio.create_task(dashboard_server.serve())
 
         # Wait until we receive a termination signal or RPC shutdown.
         await state.shutdown_event.wait()
@@ -284,8 +299,10 @@ class Daemon:
         # Stop scheduler (waits for in-progress sync).
         await scheduler.stop()
 
-        server.should_exit = True
-        await server_task
+        rpc_server.should_exit = True
+        dashboard_server.should_exit = True
+        await rpc_task
+        await dashboard_task
 
         # Close the database.
         await db.close()
