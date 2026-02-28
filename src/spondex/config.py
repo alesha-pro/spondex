@@ -46,6 +46,10 @@ class SyncConfig(BaseModel):
         default="incremental",
         description="Sync mode",
     )
+    propagate_deletions: bool = Field(
+        default=True,
+        description="Mirror removals: if a track is unliked on one side, unlike on the other",
+    )
 
 
 class SpotifyConfig(BaseModel):

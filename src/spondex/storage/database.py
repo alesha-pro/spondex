@@ -409,6 +409,30 @@ class Database:
         rows = await cur.fetchall()
         return [self._row_to_sync_run(r) for r in rows]
 
+    async def get_last_successful_sync(self) -> SyncRun | None:
+        """Return the most recent completed sync run, or None."""
+        cur = await self.conn.execute(
+            "SELECT * FROM sync_runs WHERE status = 'completed' ORDER BY id DESC LIMIT 1"
+        )
+        row = await cur.fetchone()
+        return self._row_to_sync_run(row) if row else None
+
+    # -- batch helpers --------------------------------------------------------
+
+    async def get_track_mappings_by_ids(
+        self, mapping_ids: list[int]
+    ) -> dict[int, TrackMapping]:
+        """Fetch multiple track mappings by ID in a single query."""
+        if not mapping_ids:
+            return {}
+        placeholders = ",".join("?" * len(mapping_ids))
+        cur = await self.conn.execute(
+            f"SELECT * FROM track_mapping WHERE id IN ({placeholders})",  # noqa: S608
+            mapping_ids,
+        )
+        rows = await cur.fetchall()
+        return {row["id"]: self._row_to_track_mapping(row) for row in rows}
+
     # -- row → model helpers --------------------------------------------------
 
     @staticmethod
