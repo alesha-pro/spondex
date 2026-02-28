@@ -1,6 +1,6 @@
 [project]
 name = "spondex"
-version = "0.1.0"
+version = "0.1.0.post1"
 description = "CLI daemon for syncing music libraries between Yandex Music and Spotify"
 readme = "README.md"
 requires-python = ">=3.12"
