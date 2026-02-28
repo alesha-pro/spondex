@@ -111,6 +111,8 @@ class YandexClient:
             artist_name = artists[0].name if artists else "Unknown"
             title = ft.title or "Unknown"
 
+            duration = getattr(ft, "duration_ms", None)
+
             result.append(
                 RemoteTrack(
                     service="yandex",
@@ -118,6 +120,7 @@ class YandexClient:
                     artist=artist_name,
                     title=title,
                     added_at=timestamps.get(tid),
+                    duration_ms=duration,
                 )
             )
 
@@ -150,11 +153,13 @@ class YandexClient:
             track = result.best.result
             artists = getattr(track, "artists", None)
             artist_name = artists[0].name if artists else "Unknown"
+            duration = getattr(track, "duration_ms", None)
             return RemoteTrack(
                 service="yandex",
                 remote_id=str(track.id),
                 artist=artist_name,
                 title=track.title,
+                duration_ms=duration,
             )
 
         return None

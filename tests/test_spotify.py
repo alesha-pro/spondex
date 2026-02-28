@@ -194,7 +194,7 @@ async def test_save_tracks_batching() -> None:
             return _token_response()
         if (
             request.method == "PUT"
-            and str(request.url).startswith("https://api.spotify.com/v1/me/library")
+            and str(request.url).startswith("https://api.spotify.com/v1/me/tracks")
         ):
             put_bodies.append(json.loads(request.content))
             return httpx.Response(200)
@@ -209,10 +209,10 @@ async def test_save_tracks_batching() -> None:
         await client.save_tracks(track_ids)
 
     assert len(put_bodies) == 2
-    assert len(put_bodies[0]["uris"]) == 50
-    assert len(put_bodies[1]["uris"]) == 25
-    assert put_bodies[0]["uris"][0] == "spotify:track:id0"
-    assert put_bodies[1]["uris"][-1] == "spotify:track:id74"
+    assert len(put_bodies[0]["ids"]) == 50
+    assert len(put_bodies[1]["ids"]) == 25
+    assert put_bodies[0]["ids"][0] == "id0"
+    assert put_bodies[1]["ids"][-1] == "id74"
 
 
 # ---------------------------------------------------------------------------
@@ -230,7 +230,7 @@ async def test_remove_tracks() -> None:
             return _token_response()
         if (
             request.method == "DELETE"
-            and str(request.url).startswith("https://api.spotify.com/v1/me/library")
+            and str(request.url).startswith("https://api.spotify.com/v1/me/tracks")
         ):
             delete_bodies.append(json.loads(request.content))
             return httpx.Response(200)
@@ -243,11 +243,7 @@ async def test_remove_tracks() -> None:
         await client.remove_tracks(["abc", "def", "ghi"])
 
     assert len(delete_bodies) == 1
-    assert delete_bodies[0]["uris"] == [
-        "spotify:track:abc",
-        "spotify:track:def",
-        "spotify:track:ghi",
-    ]
+    assert delete_bodies[0]["ids"] == ["abc", "def", "ghi"]
 
 
 # ---------------------------------------------------------------------------

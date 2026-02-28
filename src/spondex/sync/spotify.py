@@ -1,9 +1,9 @@
 """Async Spotify Web API client using httpx.
 
-Uses Feb 2026 API endpoints:
+Endpoints:
 - GET /me/tracks (listing liked tracks)
-- PUT /me/library (save tracks, replaces PUT /me/tracks)
-- DELETE /me/library (remove tracks)
+- PUT /me/tracks (save tracks, body: {"ids": [...]})
+- DELETE /me/tracks (remove tracks, body: {"ids": [...]})
 - GET /search (limit max 10)
 """
 
@@ -196,6 +196,7 @@ class SpotifyClient:
                         artist=artist_name,
                         title=track["name"],
                         added_at=added_at_str,
+                        duration_ms=track.get("duration_ms"),
                     )
                 )
 
@@ -210,18 +211,16 @@ class SpotifyClient:
         """Save tracks to the user's library in batches of 50."""
         for i in range(0, len(track_ids), _BATCH_SIZE):
             batch = track_ids[i : i + _BATCH_SIZE]
-            uris = [f"spotify:track:{tid}" for tid in batch]
             await self._request(
-                "PUT", f"{_API_BASE}/me/library", json={"uris": uris}
+                "PUT", f"{_API_BASE}/me/tracks", json={"ids": batch}
             )
 
     async def remove_tracks(self, track_ids: list[str]) -> None:
         """Remove tracks from the user's library in batches of 50."""
         for i in range(0, len(track_ids), _BATCH_SIZE):
             batch = track_ids[i : i + _BATCH_SIZE]
-            uris = [f"spotify:track:{tid}" for tid in batch]
             await self._request(
-                "DELETE", f"{_API_BASE}/me/library", json={"uris": uris}
+                "DELETE", f"{_API_BASE}/me/tracks", json={"ids": batch}
             )
 
     async def search_track(self, artist: str, title: str) -> RemoteTrack | None:
@@ -250,4 +249,5 @@ class SpotifyClient:
             remote_id=best["id"],
             artist=artist_name,
             title=best["name"],
+            duration_ms=best.get("duration_ms"),
         )

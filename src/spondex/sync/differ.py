@@ -16,6 +16,7 @@ class RemoteTrack:
     artist: str  # raw artist name from API
     title: str  # raw track title from API
     added_at: str | None = None  # ISO timestamp when liked
+    duration_ms: int | None = None  # track duration in milliseconds
 
 
 @dataclass
@@ -25,6 +26,23 @@ class MatchResult:
     spotify_track: RemoteTrack
     yandex_track: RemoteTrack
     confidence: float  # 0.0-1.0
+
+
+_CYR_TO_LAT = {
+    "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "e",
+    "ж": "zh", "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m",
+    "н": "n", "о": "o", "п": "p", "р": "r", "с": "s", "т": "t", "у": "u",
+    "ф": "f", "х": "kh", "ц": "ts", "ч": "ch", "ш": "sh", "щ": "shch",
+    "ъ": "", "ы": "y", "ь": "", "э": "e", "ю": "yu", "я": "ya",
+}
+
+
+def transliterate(text: str) -> str:
+    """Transliterate Cyrillic to Latin for cross-platform matching."""
+    result = []
+    for ch in text.lower():
+        result.append(_CYR_TO_LAT.get(ch, ch))
+    return "".join(result)
 
 
 def normalize(text: str) -> str:

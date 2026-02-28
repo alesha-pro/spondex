@@ -229,14 +229,31 @@ class Daemon:
 
     async def _async_main(self) -> None:
         """Async entry point: start the RPC server and wait for shutdown."""
+        from spondex.config import load_config
         from spondex.server.rpc import DaemonState, create_rpc_app
         from spondex.storage import Database
+        from spondex.sync.engine import SyncEngine
+        from spondex.sync.scheduler import SyncScheduler
 
         state = DaemonState()
+        app_config = load_config()
 
         # Initialise the database.
         db = Database(self.base_dir / "spondex.db")
         await db.connect()
+
+        # Initialise sync engine and scheduler.
+        engine = SyncEngine(app_config, db)
+        scheduler = SyncScheduler(
+            engine,
+            interval_minutes=app_config.sync.interval_minutes,
+            default_mode=app_config.sync.mode,
+        )
+        state.engine = engine
+        state.scheduler = scheduler
+
+        if app_config.is_spotify_configured() and app_config.is_yandex_configured():
+            await scheduler.start()
 
         # Install signal handlers via the event loop so they can safely
         # set the asyncio.Event.
@@ -263,6 +280,10 @@ class Daemon:
         await state.shutdown_event.wait()
 
         log.info("initiating graceful shutdown")
+
+        # Stop scheduler (waits for in-progress sync).
+        await scheduler.stop()
+
         server.should_exit = True
         await server_task
 

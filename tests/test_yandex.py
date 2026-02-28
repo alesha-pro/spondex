@@ -34,11 +34,12 @@ def _make_track_short(
 
 
 def _make_full_track(
-    track_id: str, title: str, artist_name: str
+    track_id: str, title: str, artist_name: str, duration_ms: int | None = None
 ) -> MagicMock:
     track = MagicMock()
     track.id = track_id
     track.title = title
+    track.duration_ms = duration_ms
     artist = MagicMock()
     artist.name = artist_name
     track.artists = [artist]

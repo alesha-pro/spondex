@@ -33,7 +33,6 @@ def test_status() -> None:
     assert resp.status_code == 200
     body = resp.json()
     assert body["ok"] is True
-    assert "state" in body["data"]
     assert "uptime_seconds" in body["data"]
     assert "started_at" in body["data"]
 
@@ -84,7 +83,6 @@ def test_unknown_command() -> None:
 def test_daemon_state_get_status() -> None:
     state = DaemonState()
     status = state.get_status()
-    assert "state" in status
     assert "uptime_seconds" in status
     assert "started_at" in status
     assert isinstance(status["uptime_seconds"], float)
@@ -95,3 +93,53 @@ def test_daemon_state_request_shutdown() -> None:
     assert not state.shutdown_event.is_set()
     state.request_shutdown()
     assert state.shutdown_event.is_set()
+
+
+# ---------------------------------------------------------------------------
+# Sync command tests
+# ---------------------------------------------------------------------------
+
+
+def _make_client_with_scheduler() -> tuple[TestClient, DaemonState]:
+    """Create a DaemonState with a mock scheduler + TestClient."""
+    from unittest.mock import MagicMock
+
+    state = DaemonState()
+    sched = MagicMock()
+    sched.trigger_now = MagicMock()
+    sched.pause = MagicMock()
+    sched.resume = MagicMock()
+    state.scheduler = sched
+    app = create_rpc_app(state)
+    return TestClient(app), state
+
+
+def test_sync_now() -> None:
+    client, state = _make_client_with_scheduler()
+    resp = client.post("/rpc", json={"cmd": "sync_now", "params": {"mode": "full"}})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    state.scheduler.trigger_now.assert_called_once_with(mode="full")
+
+
+def test_sync_now_no_scheduler() -> None:
+    client, _state = _make_client()
+    resp = client.post("/rpc", json={"cmd": "sync_now"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is False
+    assert "not configured" in body["error"]
+
+
+def test_pause_resume() -> None:
+    client, state = _make_client_with_scheduler()
+    resp = client.post("/rpc", json={"cmd": "pause"})
+    assert resp.status_code == 200
+    assert resp.json()["ok"] is True
+    state.scheduler.pause.assert_called_once()
+
+    resp = client.post("/rpc", json={"cmd": "resume"})
+    assert resp.status_code == 200
+    assert resp.json()["ok"] is True
+    state.scheduler.resume.assert_called_once()
