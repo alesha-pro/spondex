@@ -14,6 +14,42 @@ git clone <repo-url> && cd spondex
 uv sync
 ```
 
+## Prerequisites
+
+Before the first `spondex start` you'll need credentials for both services. The setup wizard will ask for them interactively; below is how to obtain them in advance.
+
+### Yandex Music Token
+
+You can get an OAuth token via the browser (DevTools) or by following the guide:
+
+- [Obtaining a Yandex Music token](https://yandex-music.readthedocs.io/en/main/token.html)
+
+You can enter the token during the wizard or set it later:
+
+```bash
+spondex config set yandex.token <your_token>
+```
+
+### Spotify App Setup
+
+1. Open the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard/).
+2. Create a new application (Create app).
+3. Copy the **Client ID** and **Client Secret** from the app settings.
+4. Under **Redirect URIs** add:
+   - `http://127.0.0.1:8888/callback`
+5. Save the changes.
+
+On first launch the setup wizard will ask for Client ID and Client Secret, open a browser for Spotify OAuth, and save the `refresh_token` to `~/.spondex/config.toml`.
+
+To set credentials manually:
+
+```bash
+spondex config set spotify.client_id <client_id>
+spondex config set spotify.client_secret <client_secret>
+spondex config set spotify.redirect_uri "http://127.0.0.1:8888/callback"
+# refresh_token is issued after browser authorization (the wizard handles this automatically)
+```
+
 ## Quick Start
 
 ```bash
@@ -51,6 +87,8 @@ spondex stop
 | `spondex config show`            | Show current configuration (secrets masked)      |
 | `spondex config set <key> <val>` | Set a config value (e.g. `sync.mode full`)       |
 | `spondex db status`              | Show database stats and last sync info           |
+
+For detailed CLI documentation with all options and examples, see [docs/CLI.md](docs/CLI.md).
 
 ## Configuration
 

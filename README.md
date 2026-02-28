@@ -86,6 +86,8 @@ spondex stop
 | `spondex config set <key> <val>`     | Задать значение (напр. `sync.mode full`)              |
 | `spondex db status`                  | Статистика БД и данные последней синхронизации         |
 
+Подробная документация по CLI со всеми опциями и примерами: [docs/CLI.md](docs/CLI.md).
+
 ## Конфигурация
 
 Конфигурация хранится в `~/.spondex/config.toml` и создаётся мастером настройки при первом запуске `spondex start`.
