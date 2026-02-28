@@ -29,48 +29,49 @@ export default function StatusCard({ status }: { status: StatusData | null }) {
   const nextRun = status?.scheduler?.next_run_in_seconds
 
   return (
-    <div className="card animate-slide-up" style={{ animationDelay: '0.1s' }}>
-      <div className="card-title">
-        <span className="icon">&#x1F39B;&#xFE0F;</span> Status
+    <div className="glass-card animate-pop-in delay-4">
+      <div className="card-header">
+        <div className="card-icon">&#x1F680;</div>
+        <div className="card-title">Engine Status</div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ color: 'var(--text-secondary)' }}>Engine</span>
+      <div className="info-list">
+        <div className="info-row">
+          <span className="info-label">State</span>
           <span className={badgeClass}>
-            {syncState === 'syncing' && <span className="syncing-indicator" />}
+            {syncState === 'syncing' && <span className="syncing-spinner" />}
             {syncState}
           </span>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span style={{ color: 'var(--text-secondary)' }}>Uptime</span>
-          <span style={{ fontWeight: 600 }}>{uptime}</span>
+        <div className="info-row">
+          <span className="info-label">Uptime</span>
+          <span className="info-val font-display">{uptime}</span>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span style={{ color: 'var(--text-secondary)' }}>Scheduler</span>
-          <span style={{ fontWeight: 600 }}>
+        <div className="info-row">
+          <span className="info-label">Scheduler</span>
+          <span>
             {status?.scheduler?.paused ? (
-              <span className="badge badge-paused">Paused</span>
+              <span className="badge badge-paused">PAUSED</span>
             ) : (
-              <span className="badge badge-idle">Active</span>
+              <span className="badge badge-idle">ACTIVE</span>
             )}
           </span>
         </div>
 
         {nextRun != null && !status?.scheduler?.paused && (
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ color: 'var(--text-secondary)' }}>Next sync</span>
-            <span style={{ fontWeight: 600, color: 'var(--accent-blue)' }}>
+          <div className="info-row">
+            <span className="info-label">Next Sync</span>
+            <span className="info-val font-display" style={{ color: 'var(--accent-3)' }}>
               {formatCountdown(nextRun)}
             </span>
           </div>
         )}
 
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span style={{ color: 'var(--text-secondary)' }}>Total runs</span>
-          <span style={{ fontWeight: 600 }}>
+        <div className="info-row">
+          <span className="info-label">Total Runs</span>
+          <span className="info-val font-display">
             {status?.scheduler?.total_runs ?? 0}
           </span>
         </div>

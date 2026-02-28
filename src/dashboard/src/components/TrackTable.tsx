@@ -29,15 +29,16 @@ export default function TrackTable() {
 
   function confidenceColor(c: number): string {
     if (c >= 0.95) return 'var(--accent-spotify)'
-    if (c >= 0.8) return 'var(--accent-blue)'
+    if (c >= 0.8) return 'var(--accent-3)'
     if (c >= 0.6) return 'var(--accent-yandex)'
-    return 'var(--accent-red)'
+    return '#ff4444'
   }
 
   return (
-    <div className="card animate-slide-up">
-      <div className="card-title">
-        <span className="icon">&#x1F3B5;</span> Track Mappings
+    <div className="glass-card animate-float-up delay-2">
+      <div className="card-header">
+        <div className="card-icon">&#x1F3B5;</div>
+        <div className="card-title">Track Database</div>
       </div>
 
       <input
@@ -53,7 +54,7 @@ export default function TrackTable() {
         </div>
       ) : (
         <>
-          <div className="table-wrapper">
+          <div style={{ overflowX: 'auto' }}>
             <table>
               <thead>
                 <tr>
@@ -66,33 +67,38 @@ export default function TrackTable() {
               </thead>
               <tbody>
                 {items.map((track, i) => (
-                  <tr key={track.id} className={`animate-slide-up stagger-${Math.min(i + 1, 5)}`}>
+                  <tr key={track.id} className={`animate-float-up delay-${Math.min((i % 5) + 1, 5)}`}>
                     <td style={{ fontWeight: 600 }}>{track.artist}</td>
-                    <td>{track.title}</td>
+                    <td style={{ color: 'var(--text-secondary)' }}>{track.title}</td>
                     <td>
                       {track.spotify_id ? (
-                        <span className="service-spotify" title={track.spotify_id}>{'\u2713'}</span>
+                        <span style={{ color: 'var(--accent-spotify)' }} title={track.spotify_id}>{'\u2713'}</span>
                       ) : (
                         <span style={{ color: 'var(--text-muted)' }}>{'\u2014'}</span>
                       )}
                     </td>
                     <td>
                       {track.yandex_id ? (
-                        <span className="service-yandex" title={track.yandex_id}>{'\u2713'}</span>
+                        <span style={{ color: 'var(--accent-yandex)' }} title={track.yandex_id}>{'\u2713'}</span>
                       ) : (
                         <span style={{ color: 'var(--text-muted)' }}>{'\u2014'}</span>
                       )}
                     </td>
                     <td>
-                      {(track.match_confidence * 100).toFixed(0)}%
-                      <div className="confidence-bar">
-                        <div
-                          className="confidence-fill"
-                          style={{
-                            width: `${track.match_confidence * 100}%`,
-                            background: confidenceColor(track.match_confidence),
-                          }}
-                        />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ width: '40px', fontSize: '13px', fontWeight: 'bold' }}>
+                          {(track.match_confidence * 100).toFixed(0)}%
+                        </span>
+                        <div style={{ width: '60px', height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', overflow: 'hidden' }}>
+                          <div
+                            style={{
+                              height: '100%',
+                              width: `${track.match_confidence * 100}%`,
+                              background: confidenceColor(track.match_confidence),
+                              transition: 'width 0.5s ease',
+                            }}
+                          />
+                        </div>
                       </div>
                     </td>
                   </tr>
@@ -100,15 +106,23 @@ export default function TrackTable() {
               </tbody>
             </table>
           </div>
-          <div className="pagination">
-            <span className="pagination-info">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px' }}>
+            <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
               {offset + 1}{'\u2013'}{Math.min(offset + PAGE_SIZE, total)} of {total}
             </span>
-            <div className="pagination-buttons">
-              <button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button 
+                disabled={offset === 0} 
+                onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
+                style={{ padding: '6px 12px', borderRadius: '8px', background: 'rgba(255,255,255,0.1)', color: 'white', border: 'none', cursor: offset === 0 ? 'not-allowed' : 'pointer', opacity: offset === 0 ? 0.5 : 1 }}
+              >
                 {'\u2190'} Prev
               </button>
-              <button disabled={offset + PAGE_SIZE >= total} onClick={() => setOffset(offset + PAGE_SIZE)}>
+              <button 
+                disabled={offset + PAGE_SIZE >= total} 
+                onClick={() => setOffset(offset + PAGE_SIZE)}
+                style={{ padding: '6px 12px', borderRadius: '8px', background: 'rgba(255,255,255,0.1)', color: 'white', border: 'none', cursor: offset + PAGE_SIZE >= total ? 'not-allowed' : 'pointer', opacity: offset + PAGE_SIZE >= total ? 0.5 : 1 }}
+              >
                 Next {'\u2192'}
               </button>
             </div>

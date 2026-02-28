@@ -9,6 +9,7 @@ import SyncHistory from './components/SyncHistory'
 import TrackTable from './components/TrackTable'
 import UnmatchedTable from './components/UnmatchedTable'
 import ConfigPanel from './components/ConfigPanel'
+import AnimatedBackground from './components/AnimatedBackground'
 
 type Tab = 'overview' | 'tracks' | 'unmatched' | 'config'
 
@@ -17,12 +18,10 @@ export default function App() {
   const [status, setStatus] = useState<StatusData | null>(null)
   const [activeTab, setActiveTab] = useState<Tab>('overview')
 
-  // Use WS status when available, fallback to polling
   useEffect(() => {
     if (wsStatus) setStatus(wsStatus)
   }, [wsStatus])
 
-  // Initial fetch
   useEffect(() => {
     api.getStatus().then(setStatus).catch(() => {})
   }, [])
@@ -32,46 +31,56 @@ export default function App() {
   }, [])
 
   return (
-    <div className="app">
-      <header className="app-header animate-slide-up">
-        <h1 className="app-title">
-          <span>&#9835;</span> Spondex
-        </h1>
-        <div className="ws-indicator">
-          <div className={`ws-dot ${connected ? 'connected' : ''}`} />
-          {connected ? 'Live' : 'Reconnecting...'}
-        </div>
-      </header>
-
-      <div className="tabs animate-slide-up" style={{ animationDelay: '0.05s' }}>
-        {(['overview', 'tracks', 'unmatched', 'config'] as Tab[]).map((tab) => (
-          <button
-            key={tab}
-            className={`tab ${activeTab === tab ? 'active' : ''}`}
-            onClick={() => setActiveTab(tab)}
-          >
-            {tab === 'overview' && 'Overview'}
-            {tab === 'tracks' && 'Tracks'}
-            {tab === 'unmatched' && 'Unmatched'}
-            {tab === 'config' && 'Config'}
-          </button>
-        ))}
-      </div>
-
-      {activeTab === 'overview' && (
-        <>
-          <div className="grid">
-            <StatusCard status={status} />
-            <Controls status={status} onAction={refresh} />
+    <>
+      <AnimatedBackground />
+      <div className="app-container">
+        <header className="app-header animate-float-up delay-1">
+          <div className="brand">
+            <div className="brand-icon">&#9835;</div>
+            <h1 className="app-title">SPONDEX</h1>
           </div>
-          <StatsBar status={status} />
-          <SyncHistory />
-        </>
-      )}
+          <div className="status-pill">
+            <div className={`status-dot ${connected ? 'connected' : ''}`} />
+            {connected ? 'LIVE CONNECTION' : 'RECONNECTING...'}
+          </div>
+        </header>
 
-      {activeTab === 'tracks' && <TrackTable />}
-      {activeTab === 'unmatched' && <UnmatchedTable />}
-      {activeTab === 'config' && <ConfigPanel />}
-    </div>
+        <div className="main-content">
+          <nav className="nav-sidebar animate-float-up delay-2">
+            {(['overview', 'tracks', 'unmatched', 'config'] as Tab[]).map((tab) => (
+              <button
+                key={tab}
+                className={`nav-item ${activeTab === tab ? 'active' : ''}`}
+                onClick={() => setActiveTab(tab)}
+              >
+                {tab === 'overview' && <><span className="nav-icon">&#x1F4CA;</span> Dashboard</>}
+                {tab === 'tracks' && <><span className="nav-icon">&#x1F3B5;</span> Tracks</>}
+                {tab === 'unmatched' && <><span className="nav-icon">&#x26A0;&#xFE0F;</span> Unmatched</>}
+                {tab === 'config' && <><span className="nav-icon">&#x2699;&#xFE0F;</span> Config</>}
+              </button>
+            ))}
+          </nav>
+
+          <main className="animate-float-up delay-3">
+            {activeTab === 'overview' && (
+              <>
+                <StatsBar status={status} />
+                <div className="dashboard-grid" style={{ marginTop: '32px' }}>
+                  <StatusCard status={status} />
+                  <Controls status={status} onAction={refresh} />
+                  <div className="grid-full">
+                    <SyncHistory />
+                  </div>
+                </div>
+              </>
+            )}
+
+            {activeTab === 'tracks' && <TrackTable />}
+            {activeTab === 'unmatched' && <UnmatchedTable />}
+            {activeTab === 'config' && <ConfigPanel />}
+          </main>
+        </div>
+      </div>
+    </>
   )
 }

@@ -36,32 +36,31 @@ export default function Controls({
   }
 
   return (
-    <div className="card animate-slide-up" style={{ animationDelay: '0.15s' }}>
-      <div className="card-title">
-        <span className="icon">&#x1F3AE;</span> Controls
+    <div className="glass-card animate-pop-in delay-5">
+      <div className="card-header">
+        <div className="card-icon">&#x1F3AE;</div>
+        <div className="card-title">Command Center</div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <div className="controls-list">
         <button
-          className="btn btn-primary animate-wiggle"
+          className="btn-super sync-btn"
           onClick={handleSync}
           disabled={isSyncing || loading === 'sync'}
         >
-          {loading === 'sync' ? (
-            <><span className="syncing-indicator" /> Syncing...</>
-          ) : isSyncing ? (
-            <><span className="syncing-indicator" /> Sync in Progress</>
+          {loading === 'sync' || isSyncing ? (
+            <><span className="syncing-spinner" /> <span>Syncing...</span></>
           ) : (
-            'Sync Now'
+            <span>Initiate Full Sync</span>
           )}
         </button>
 
         <button
-          className={`btn ${isPaused ? 'btn-primary' : 'btn-warning'}`}
+          className={`btn-super ${isPaused ? 'resume-btn' : 'pause-btn'}`}
           onClick={handlePauseResume}
           disabled={loading === 'pause'}
         >
-          {isPaused ? 'Resume Scheduler' : 'Pause Scheduler'}
+          <span>{isPaused ? 'Resume Scheduler' : 'Halt Scheduler'}</span>
         </button>
       </div>
     </div>
