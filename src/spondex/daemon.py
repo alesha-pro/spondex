@@ -230,8 +230,13 @@ class Daemon:
     async def _async_main(self) -> None:
         """Async entry point: start the RPC server and wait for shutdown."""
         from spondex.server.rpc import DaemonState, create_rpc_app
+        from spondex.storage import Database
 
         state = DaemonState()
+
+        # Initialise the database.
+        db = Database(self.base_dir / "spondex.db")
+        await db.connect()
 
         # Install signal handlers via the event loop so they can safely
         # set the asyncio.Event.
@@ -260,6 +265,9 @@ class Daemon:
         log.info("initiating graceful shutdown")
         server.should_exit = True
         await server_task
+
+        # Close the database.
+        await db.close()
 
         # Final cleanup.
         self._cleanup()

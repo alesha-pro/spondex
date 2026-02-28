@@ -14,6 +14,7 @@ dependencies = [
     "structlog>=23.0",
     "spotipy>=2.25.2",
     "yandex-music",
+    "aiosqlite>=0.19",
 ]
 
 [project.scripts]

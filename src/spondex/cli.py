@@ -209,3 +209,67 @@ def show_config() -> None:
     console.print("\n[bold cyan]\\[yandex][/bold cyan]")
     console.print(f"  token = {_mask(cfg.yandex.token)}")
     console.print()
+
+
+# ---------------------------------------------------------------------------
+# Database inspection
+# ---------------------------------------------------------------------------
+
+
+db_app = typer.Typer(name="db", help="Database inspection commands.", add_completion=False)
+app.add_typer(db_app)
+
+
+@db_app.command(name="status")
+def db_status() -> None:
+    """Show database status and table statistics."""
+    import sqlite3
+
+    db_path = get_base_dir() / "spondex.db"
+    if not db_path.exists():
+        console.print("[yellow]Database not found.[/yellow] Start the daemon first to initialise it.")
+        raise typer.Exit(1)
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+
+    console.print(f"\n[bold]Database[/bold]  {db_path}")
+    size_kb = db_path.stat().st_size / 1024
+    console.print(f"[dim]Size: {size_kb:.1f} KB[/dim]\n")
+
+    tables = [
+        ("track_mapping", "Track mappings (Spotify ↔ Yandex)"),
+        ("collection", "Collections (liked / playlists)"),
+        ("collection_track", "Tracks in collections"),
+        ("unmatched", "Unmatched tracks"),
+        ("sync_runs", "Sync runs"),
+    ]
+
+    for table, description in tables:
+        cur = conn.execute(f"SELECT COUNT(*) as cnt FROM {table}")  # noqa: S608
+        count = cur.fetchone()["cnt"]
+        style = "green" if count > 0 else "dim"
+        console.print(f"  [{style}]{table:20s}[/{style}]  {count:>6}  [dim]{description}[/dim]")
+
+    # Last sync run
+    cur = conn.execute(
+        "SELECT * FROM sync_runs ORDER BY id DESC LIMIT 1"
+    )
+    last_run = cur.fetchone()
+    if last_run:
+        console.print("\n[bold]Last sync[/bold]")
+        console.print(f"  Status:    {last_run['status']}")
+        console.print(f"  Direction: {last_run['direction']}")
+        console.print(f"  Mode:      {last_run['mode']}")
+        console.print(f"  Started:   {last_run['started_at']}")
+        if last_run["finished_at"]:
+            console.print(f"  Finished:  {last_run['finished_at']}")
+        if last_run["stats_json"]:
+            import json
+            stats = json.loads(last_run["stats_json"])
+            parts = [f"{k}: {v}" for k, v in stats.items()]
+            console.print(f"  Stats:     {', '.join(parts)}")
+        if last_run["error_message"]:
+            console.print(f"  [red]Error: {last_run['error_message']}[/red]")
+
+    console.print()

@@ -199,3 +199,65 @@ def test_config_empty_secrets_show_not_set(cli_base_dir: Path):
     result = runner.invoke(app, ["config"])
     assert result.exit_code == 0
     assert "not set" in result.output
+
+
+# ---------------------------------------------------------------------------
+# 9. db command
+# ---------------------------------------------------------------------------
+
+
+def test_db_no_database(cli_base_dir: Path):
+    """db command reports missing database."""
+    result = runner.invoke(app, ["db", "status"])
+    assert result.exit_code == 1
+    assert "not found" in result.output.lower()
+
+
+def test_db_empty_database(cli_base_dir: Path):
+    """db command shows table stats for an empty database."""
+    import sqlite3
+
+    db_path = cli_base_dir / "spondex.db"
+    conn = sqlite3.connect(db_path)
+    # Create tables using the same schema
+    from spondex.storage.database import _SCHEMA
+
+    conn.executescript(_SCHEMA)
+    conn.close()
+
+    result = runner.invoke(app, ["db", "status"])
+    assert result.exit_code == 0
+    assert "track_mapping" in result.output
+    assert "collection" in result.output
+    assert "sync_runs" in result.output
+
+
+def test_db_with_data(cli_base_dir: Path):
+    """db command shows counts and last sync info."""
+    import json
+    import sqlite3
+
+    db_path = cli_base_dir / "spondex.db"
+    conn = sqlite3.connect(db_path)
+    from spondex.storage.database import _SCHEMA
+
+    conn.executescript(_SCHEMA)
+
+    # Insert some data
+    conn.execute(
+        "INSERT INTO track_mapping (spotify_id, artist, title) VALUES ('sp1', 'Artist', 'Song')"
+    )
+    conn.execute(
+        "INSERT INTO sync_runs (started_at, finished_at, direction, mode, status, stats_json) "
+        "VALUES ('2026-02-28T20:00:00', '2026-02-28T20:01:00', 'bidirectional', 'full', 'completed', ?)",
+        (json.dumps({"added": 3, "removed": 0}),),
+    )
+    conn.commit()
+    conn.close()
+
+    result = runner.invoke(app, ["db", "status"])
+    assert result.exit_code == 0
+    assert "1" in result.output  # track_mapping count
+    assert "bidirectional" in result.output
+    assert "completed" in result.output
+    assert "added: 3" in result.output
