@@ -9,7 +9,9 @@ import httpx
 import typer
 from rich.console import Console
 
-from spondex.config import get_base_dir, ensure_dirs
+from pydantic import SecretStr
+
+from spondex.config import config_exists, ensure_dirs, get_base_dir, load_config, save_config
 
 app = typer.Typer(
     name="spondex",
@@ -74,6 +76,14 @@ def start() -> None:
     from spondex.daemon import Daemon
 
     ensure_dirs()
+
+    if not config_exists():
+        from spondex.wizard import run_wizard
+
+        console.print("[yellow]No configuration found. Starting setup wizard...[/yellow]\n")
+        cfg = run_wizard()
+        save_config(cfg)
+        console.print("[green]Configuration saved.[/green]\n")
 
     daemon = Daemon()
     if daemon.is_running():
@@ -163,3 +173,39 @@ def logs(
 
     for line in last_lines:
         console.print(line, end="", highlight=False)
+
+
+# ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
+
+
+def _mask(secret: SecretStr) -> str:
+    """Return '***' if the secret is non-empty, else '(not set)'."""
+    return "[bold]***[/bold]" if secret.get_secret_value() else "[dim](not set)[/dim]"
+
+
+@app.command(name="config")
+def show_config() -> None:
+    """Show current configuration (secrets are masked)."""
+    cfg = load_config()
+
+    console.print("\n[bold]Current Configuration[/bold]\n")
+
+    console.print("[bold cyan]\\[daemon][/bold cyan]")
+    console.print(f"  dashboard_port = {cfg.daemon.dashboard_port}")
+    console.print(f"  log_level      = {cfg.daemon.log_level}")
+
+    console.print("\n[bold cyan]\\[sync][/bold cyan]")
+    console.print(f"  interval_minutes = {cfg.sync.interval_minutes}")
+    console.print(f"  mode             = {cfg.sync.mode}")
+
+    console.print("\n[bold cyan]\\[spotify][/bold cyan]")
+    console.print(f"  client_id      = {cfg.spotify.client_id or '[dim](not set)[/dim]'}")
+    console.print(f"  client_secret  = {_mask(cfg.spotify.client_secret)}")
+    console.print(f"  redirect_uri   = {cfg.spotify.redirect_uri}")
+    console.print(f"  refresh_token  = {_mask(cfg.spotify.refresh_token)}")
+
+    console.print("\n[bold cyan]\\[yandex][/bold cyan]")
+    console.print(f"  token = {_mask(cfg.yandex.token)}")
+    console.print()

@@ -107,6 +107,9 @@ def test_logs_with_log_file(cli_base_dir: Path):
 
 
 def test_start_already_running(cli_base_dir: Path):
+    # Create config so wizard is not triggered.
+    (cli_base_dir / "config.toml").write_text("[daemon]\nlog_level = \"info\"\n")
+
     with (
         patch("spondex.daemon.Daemon.is_running", return_value=True),
         patch("spondex.daemon.Daemon.get_pid", return_value=12345),
@@ -116,3 +119,83 @@ def test_start_already_running(cli_base_dir: Path):
     assert result.exit_code == 0
     assert "already running" in result.output.lower()
     assert "12345" in result.output
+
+
+# ---------------------------------------------------------------------------
+# 7. start triggers wizard when no config
+# ---------------------------------------------------------------------------
+
+
+def test_start_runs_wizard_when_no_config(cli_base_dir: Path):
+    """start command runs wizard when config.toml is absent."""
+    from spondex.config import AppConfig
+
+    assert not (cli_base_dir / "config.toml").exists()
+
+    with (
+        patch("spondex.wizard.run_wizard", return_value=AppConfig()) as mock_wizard,
+        patch("spondex.daemon.Daemon.is_running", return_value=True),
+        patch("spondex.daemon.Daemon.get_pid", return_value=99),
+    ):
+        result = runner.invoke(app, ["start"])
+
+    mock_wizard.assert_called_once()
+    assert (cli_base_dir / "config.toml").exists()
+    assert result.exit_code == 0
+
+
+def test_start_skips_wizard_when_config_exists(cli_base_dir: Path):
+    """start command skips wizard when config.toml is present."""
+    (cli_base_dir / "config.toml").write_text("[daemon]\nlog_level = \"info\"\n")
+
+    with (
+        patch("spondex.wizard.run_wizard") as mock_wizard,
+        patch("spondex.daemon.Daemon.is_running", return_value=True),
+        patch("spondex.daemon.Daemon.get_pid", return_value=42),
+    ):
+        result = runner.invoke(app, ["start"])
+
+    mock_wizard.assert_not_called()
+    assert result.exit_code == 0
+
+
+# ---------------------------------------------------------------------------
+# 8. config command
+# ---------------------------------------------------------------------------
+
+
+def test_config_shows_sections(cli_base_dir: Path):
+    """config command displays all sections with masked secrets."""
+    from pydantic import SecretStr
+
+    from spondex.config import AppConfig, SpotifyConfig, YandexConfig, save_config
+
+    save_config(
+        AppConfig(
+            spotify=SpotifyConfig(
+                client_id="test-id",
+                client_secret=SecretStr("secret"),
+                refresh_token=SecretStr("token"),
+            ),
+            yandex=YandexConfig(token=SecretStr("ym-tok")),
+        )
+    )
+
+    result = runner.invoke(app, ["config"])
+    assert result.exit_code == 0
+    assert "test-id" in result.output
+    assert "***" in result.output
+    # Secrets must NOT appear in output
+    assert "secret" not in result.output.lower().replace("client_secret", "")
+    assert "ym-tok" not in result.output
+
+
+def test_config_empty_secrets_show_not_set(cli_base_dir: Path):
+    """config command shows '(not set)' for empty secrets."""
+    from spondex.config import AppConfig, save_config
+
+    save_config(AppConfig())
+
+    result = runner.invoke(app, ["config"])
+    assert result.exit_code == 0
+    assert "not set" in result.output

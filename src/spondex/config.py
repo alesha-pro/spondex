@@ -7,7 +7,7 @@ import tomllib
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
 
 
 # ---------------------------------------------------------------------------
@@ -48,11 +48,28 @@ class SyncConfig(BaseModel):
     )
 
 
+class SpotifyConfig(BaseModel):
+    """Spotify API credentials and OAuth tokens."""
+
+    client_id: str = Field(default="", description="Spotify Developer App client ID")
+    client_secret: SecretStr = Field(default=SecretStr(""), description="Spotify Developer App client secret")
+    redirect_uri: str = Field(default="http://127.0.0.1:8888/callback", description="OAuth redirect URI")
+    refresh_token: SecretStr = Field(default=SecretStr(""), description="Spotify OAuth refresh token")
+
+
+class YandexConfig(BaseModel):
+    """Yandex Music API credentials."""
+
+    token: SecretStr = Field(default=SecretStr(""), description="Yandex Music OAuth token")
+
+
 class AppConfig(BaseModel):
     """Top-level application configuration."""
 
     daemon: DaemonConfig = Field(default_factory=DaemonConfig)
     sync: SyncConfig = Field(default_factory=SyncConfig)
+    spotify: SpotifyConfig = Field(default_factory=SpotifyConfig)
+    yandex: YandexConfig = Field(default_factory=YandexConfig)
 
     # -- derived paths (not stored in TOML) --------------------------------
 
@@ -71,6 +88,18 @@ class AppConfig(BaseModel):
     @property
     def log_dir(self) -> Path:
         return self.base_dir / _LOG_DIR
+
+    def is_spotify_configured(self) -> bool:
+        """Return True if Spotify credentials are fully set."""
+        return bool(
+            self.spotify.client_id
+            and self.spotify.client_secret.get_secret_value()
+            and self.spotify.refresh_token.get_secret_value()
+        )
+
+    def is_yandex_configured(self) -> bool:
+        """Return True if the Yandex Music token is set."""
+        return bool(self.yandex.token.get_secret_value())
 
 
 # ---------------------------------------------------------------------------
@@ -113,6 +142,10 @@ def _format_toml_value(value: object) -> str:
         return "true" if value else "false"
     if isinstance(value, int):
         return str(value)
+    if isinstance(value, SecretStr):
+        raw = value.get_secret_value()
+        escaped = raw.replace("\\", "\\\\").replace('"', '\\"')
+        return f'"{escaped}"'
     if isinstance(value, str):
         escaped = value.replace("\\", "\\\\").replace('"', '\\"')
         return f'"{escaped}"'
@@ -127,9 +160,15 @@ def _dump_toml(config: AppConfig) -> str:
     scalar values).  This avoids pulling in a TOML-writing library for now.
     """
     lines: list[str] = []
-    for section_name, section_model in [("daemon", config.daemon), ("sync", config.sync)]:
+    sections = [
+        ("daemon", config.daemon),
+        ("sync", config.sync),
+        ("spotify", config.spotify),
+        ("yandex", config.yandex),
+    ]
+    for section_name, section_model in sections:
         lines.append(f"[{section_name}]")
-        for key, value in section_model.model_dump().items():
+        for key, value in section_model.model_dump(mode="python").items():
             lines.append(f"{key} = {_format_toml_value(value)}")
         lines.append("")  # blank line between sections
     return "\n".join(lines)

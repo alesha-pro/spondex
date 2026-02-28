@@ -9,10 +9,14 @@ from pathlib import Path
 
 import pytest
 
+from pydantic import SecretStr
+
 from spondex.config import (
     AppConfig,
     DaemonConfig,
+    SpotifyConfig,
     SyncConfig,
+    YandexConfig,
     _dump_toml,
     _format_toml_value,
     config_exists,
@@ -242,3 +246,120 @@ def test_dump_toml_produces_valid_toml_structure():
     parsed = tomllib.loads(toml_str)
     assert "daemon" in parsed
     assert "sync" in parsed
+
+
+# ---------------------------------------------------------------------------
+# 10. SpotifyConfig / YandexConfig defaults
+# ---------------------------------------------------------------------------
+
+
+def test_spotify_config_defaults():
+    cfg = SpotifyConfig()
+    assert cfg.client_id == ""
+    assert cfg.client_secret.get_secret_value() == ""
+    assert cfg.redirect_uri == "http://127.0.0.1:8888/callback"
+    assert cfg.refresh_token.get_secret_value() == ""
+
+
+def test_yandex_config_defaults():
+    cfg = YandexConfig()
+    assert cfg.token.get_secret_value() == ""
+
+
+def test_app_config_includes_spotify_and_yandex():
+    cfg = AppConfig()
+    assert isinstance(cfg.spotify, SpotifyConfig)
+    assert isinstance(cfg.yandex, YandexConfig)
+
+
+# ---------------------------------------------------------------------------
+# 11. SecretStr not exposed in repr
+# ---------------------------------------------------------------------------
+
+
+def test_spotify_secret_not_in_repr():
+    cfg = SpotifyConfig(client_secret=SecretStr("super-secret"))
+    assert "super-secret" not in repr(cfg)
+    assert "super-secret" not in str(cfg)
+
+
+# ---------------------------------------------------------------------------
+# 12. _format_toml_value for SecretStr
+# ---------------------------------------------------------------------------
+
+
+def test_format_toml_value_secret_str():
+    result = _format_toml_value(SecretStr("my-password"))
+    assert result == '"my-password"'
+
+
+def test_format_toml_value_empty_secret_str():
+    result = _format_toml_value(SecretStr(""))
+    assert result == '""'
+
+
+# ---------------------------------------------------------------------------
+# 13. _dump_toml includes new sections
+# ---------------------------------------------------------------------------
+
+
+def test_dump_toml_includes_spotify_yandex_sections():
+    cfg = AppConfig()
+    toml_str = _dump_toml(cfg)
+    assert "[spotify]" in toml_str
+    assert "[yandex]" in toml_str
+    parsed = tomllib.loads(toml_str)
+    assert "spotify" in parsed
+    assert "yandex" in parsed
+
+
+# ---------------------------------------------------------------------------
+# 14. Round-trip with secrets
+# ---------------------------------------------------------------------------
+
+
+def test_save_load_round_trip_with_secrets(base_dir: Path):
+    original = AppConfig(
+        spotify=SpotifyConfig(
+            client_id="abc123",
+            client_secret=SecretStr("spotify-secret"),
+            refresh_token=SecretStr("refresh-xyz"),
+        ),
+        yandex=YandexConfig(token=SecretStr("yandex-token")),
+    )
+    save_config(original)
+    loaded = load_config()
+
+    assert loaded.spotify.client_id == "abc123"
+    assert loaded.spotify.client_secret.get_secret_value() == "spotify-secret"
+    assert loaded.spotify.refresh_token.get_secret_value() == "refresh-xyz"
+    assert loaded.yandex.token.get_secret_value() == "yandex-token"
+
+
+# ---------------------------------------------------------------------------
+# 15. is_spotify_configured / is_yandex_configured
+# ---------------------------------------------------------------------------
+
+
+def test_is_spotify_configured_false_when_empty():
+    assert AppConfig().is_spotify_configured() is False
+
+
+def test_is_spotify_configured_true_when_set():
+    cfg = AppConfig(
+        spotify=SpotifyConfig(
+            client_id="id",
+            client_secret=SecretStr("secret"),
+            refresh_token=SecretStr("token"),
+        ),
+    )
+    assert cfg.is_spotify_configured() is True
+
+
+def test_is_yandex_configured_false_when_empty():
+    assert AppConfig().is_yandex_configured() is False
+
+
+def test_is_yandex_configured_true_when_set():
+    cfg = AppConfig(yandex=YandexConfig(token=SecretStr("tok")))
+    assert cfg.is_yandex_configured() is True
