@@ -12,7 +12,6 @@ from fastapi.testclient import TestClient
 from spondex.server.rpc import DaemonState
 from spondex.storage.database import Database
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -76,12 +75,8 @@ def test_status_empty(_make_dashboard_client) -> None:
 
 @pytest.mark.asyncio
 async def test_status_with_data(_make_dashboard_client, dashboard_db: Database) -> None:
-    await dashboard_db.upsert_track_mapping(
-        artist="Test", title="Song", spotify_id="sp1", yandex_id="ym1"
-    )
-    await dashboard_db.add_unmatched(
-        source_service="spotify", source_id="sp2", artist="Unknown", title="Track"
-    )
+    await dashboard_db.upsert_track_mapping(artist="Test", title="Song", spotify_id="sp1", yandex_id="ym1")
+    await dashboard_db.add_unmatched(source_service="spotify", source_id="sp2", artist="Unknown", title="Track")
 
     client, _state, _db = _make_dashboard_client()
     resp = client.get("/api/status")
@@ -97,7 +92,7 @@ async def test_status_with_data(_make_dashboard_client, dashboard_db: Database) 
 
 @pytest.mark.asyncio
 async def test_history_pagination(_make_dashboard_client, dashboard_db: Database) -> None:
-    for i in range(5):
+    for _i in range(5):
         run = await dashboard_db.start_sync_run(direction="bidirectional", mode="full")
         await dashboard_db.finish_sync_run(run.id, status="completed")
 
@@ -124,15 +119,9 @@ async def test_history_pagination(_make_dashboard_client, dashboard_db: Database
 
 @pytest.mark.asyncio
 async def test_tracks_search_pagination(_make_dashboard_client, dashboard_db: Database) -> None:
-    await dashboard_db.upsert_track_mapping(
-        artist="Queen", title="Bohemian Rhapsody", spotify_id="sp1"
-    )
-    await dashboard_db.upsert_track_mapping(
-        artist="Queen", title="We Will Rock You", spotify_id="sp2"
-    )
-    await dashboard_db.upsert_track_mapping(
-        artist="Beatles", title="Yesterday", spotify_id="sp3"
-    )
+    await dashboard_db.upsert_track_mapping(artist="Queen", title="Bohemian Rhapsody", spotify_id="sp1")
+    await dashboard_db.upsert_track_mapping(artist="Queen", title="We Will Rock You", spotify_id="sp2")
+    await dashboard_db.upsert_track_mapping(artist="Beatles", title="Yesterday", spotify_id="sp3")
 
     client, _state, _db = _make_dashboard_client()
 
@@ -161,9 +150,7 @@ async def test_tracks_search_pagination(_make_dashboard_client, dashboard_db: Da
 
 @pytest.mark.asyncio
 async def test_unmatched(_make_dashboard_client, dashboard_db: Database) -> None:
-    await dashboard_db.add_unmatched(
-        source_service="spotify", source_id="sp1", artist="Test", title="Song"
-    )
+    await dashboard_db.add_unmatched(source_service="spotify", source_id="sp1", artist="Test", title="Song")
 
     client, _state, _db = _make_dashboard_client()
     resp = client.get("/api/unmatched?limit=10&offset=0")
@@ -247,15 +234,9 @@ def test_pause_no_scheduler(_make_dashboard_client) -> None:
 
 @pytest.mark.asyncio
 async def test_collections(_make_dashboard_client, dashboard_db: Database) -> None:
-    col = await dashboard_db.create_collection(
-        service="spotify", collection_type="liked", title="Liked Songs"
-    )
-    mapping = await dashboard_db.upsert_track_mapping(
-        artist="Test", title="Song", spotify_id="sp1"
-    )
-    await dashboard_db.add_track_to_collection(
-        collection_id=col.id, track_mapping_id=mapping.id
-    )
+    col = await dashboard_db.create_collection(service="spotify", collection_type="liked", title="Liked Songs")
+    mapping = await dashboard_db.upsert_track_mapping(artist="Test", title="Song", spotify_id="sp1")
+    await dashboard_db.add_track_to_collection(collection_id=col.id, track_mapping_id=mapping.id)
 
     client, _state, _db = _make_dashboard_client()
     resp = client.get("/api/collections")
@@ -264,43 +245,6 @@ async def test_collections(_make_dashboard_client, dashboard_db: Database) -> No
     assert len(body) == 1
     assert body[0]["title"] == "Liked Songs"
     assert body[0]["track_count"] == 1
-
-
-# ---------------------------------------------------------------------------
-# Chart endpoints
-# ---------------------------------------------------------------------------
-
-
-def test_charts_return_json_not_html(_make_dashboard_client) -> None:
-    client, _state, _db = _make_dashboard_client()
-
-    resp = client.get("/api/charts/confidence")
-    assert resp.status_code == 200
-    assert "text/html" not in resp.headers.get("content-type", "")
-    body = resp.json()
-    assert isinstance(body, list)
-
-    resp = client.get("/api/charts/activity?limit=5")
-    assert resp.status_code == 200
-    assert "text/html" not in resp.headers.get("content-type", "")
-    body = resp.json()
-    assert isinstance(body, list)
-
-
-@pytest.mark.asyncio
-async def test_confidence_chart_with_data(_make_dashboard_client, dashboard_db: Database) -> None:
-    await dashboard_db.upsert_track_mapping(
-        artist="A", title="B", spotify_id="s1", yandex_id="y1", match_confidence=1.0
-    )
-    await dashboard_db.upsert_track_mapping(
-        artist="C", title="D", spotify_id="s2", yandex_id="y2", match_confidence=0.85
-    )
-
-    client, _state, _db = _make_dashboard_client()
-    resp = client.get("/api/charts/confidence")
-    body = resp.json()
-    assert len(body) > 0
-    assert all("bucket" in b and "count" in b for b in body)
 
 
 # ---------------------------------------------------------------------------

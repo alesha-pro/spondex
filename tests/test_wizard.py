@@ -4,16 +4,12 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-from pydantic import SecretStr
-
 from spondex.wizard import (
     _wizard_spotify,
     _wizard_sync,
     _wizard_yandex,
     run_wizard,
 )
-
 
 # ---------------------------------------------------------------------------
 # 1. _wizard_spotify
@@ -171,12 +167,12 @@ def test_run_wizard_full_flow():
         patch(
             "rich.prompt.Prompt.ask",
             side_effect=[
-                "sp-client-id",                      # Spotify client_id
-                "sp-client-sec",                     # Spotify client_secret
-                "http://127.0.0.1:8888/callback",    # Spotify redirect_uri
-                "ym-token",                          # Yandex token
-                "full",                              # Sync mode
-                "15",                                # Sync interval
+                "sp-client-id",  # Spotify client_id
+                "sp-client-sec",  # Spotify client_secret
+                "http://127.0.0.1:8888/callback",  # Spotify redirect_uri
+                "ym-token",  # Yandex token
+                "full",  # Sync mode
+                "15",  # Sync interval
             ],
         ),
     ):

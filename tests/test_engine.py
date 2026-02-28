@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_asyncio
@@ -14,22 +12,17 @@ from spondex.storage.database import Database
 from spondex.sync.differ import RemoteTrack
 from spondex.sync.engine import SyncEngine, SyncState
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
 def _sp_track(remote_id: str, artist: str, title: str, added_at=None) -> RemoteTrack:
-    return RemoteTrack(
-        service="spotify", remote_id=remote_id, artist=artist, title=title, added_at=added_at
-    )
+    return RemoteTrack(service="spotify", remote_id=remote_id, artist=artist, title=title, added_at=added_at)
 
 
 def _ym_track(remote_id: str, artist: str, title: str, added_at=None) -> RemoteTrack:
-    return RemoteTrack(
-        service="yandex", remote_id=remote_id, artist=artist, title=title, added_at=added_at
-    )
+    return RemoteTrack(service="yandex", remote_id=remote_id, artist=artist, title=title, added_at=added_at)
 
 
 class MockClient:
@@ -82,8 +75,10 @@ def _make_config(**sync_kw) -> AppConfig:
 
 def _mock_factory(client):
     """Return a factory callable that ignores config and returns the mock client."""
+
     def factory(config):
         return client
+
     return factory
 
 
@@ -108,9 +103,11 @@ async def db(tmp_path):
 @pytest.mark.asyncio
 async def test_first_sync_forces_full(db):
     """First sync (no previous runs) should force full mode."""
-    sp = MockClient(liked_tracks=[
-        _sp_track("sp1", "Artist A", "Song One"),
-    ])
+    sp = MockClient(
+        liked_tracks=[
+            _sp_track("sp1", "Artist A", "Song One"),
+        ]
+    )
     ym = MockClient(
         liked_tracks=[],
         search_results={
@@ -133,13 +130,17 @@ async def test_first_sync_forces_full(db):
 @pytest.mark.asyncio
 async def test_cross_match_first_sync(db):
     """Tracks present on both sides should be cross-matched without search."""
-    sp = MockClient(liked_tracks=[
-        _sp_track("sp1", "Artist A", "Song One"),
-        _sp_track("sp2", "Artist B", "Song Two"),
-    ])
-    ym = MockClient(liked_tracks=[
-        _ym_track("ym1", "Artist A", "Song One"),
-    ])
+    sp = MockClient(
+        liked_tracks=[
+            _sp_track("sp1", "Artist A", "Song One"),
+            _sp_track("sp2", "Artist B", "Song Two"),
+        ]
+    )
+    ym = MockClient(
+        liked_tracks=[
+            _ym_track("ym1", "Artist A", "Song One"),
+        ]
+    )
 
     engine = SyncEngine(
         _make_config(),
@@ -199,22 +200,12 @@ async def test_full_sync_removals(db):
     )
 
     # First: seed DB with a track on both sides
-    mapping = await db.upsert_track_mapping(
-        artist="Art", title="Song", spotify_id="sp1", yandex_id="ym1"
-    )
-    sp_col = await db.create_collection(
-        service="spotify", collection_type="liked", title="Liked Songs"
-    )
-    ym_col = await db.create_collection(
-        service="yandex", collection_type="liked", title="Liked Songs"
-    )
+    mapping = await db.upsert_track_mapping(artist="Art", title="Song", spotify_id="sp1", yandex_id="ym1")
+    sp_col = await db.create_collection(service="spotify", collection_type="liked", title="Liked Songs")
+    ym_col = await db.create_collection(service="yandex", collection_type="liked", title="Liked Songs")
     await db.pair_collections(sp_col.id, ym_col.id)
-    await db.add_track_to_collection(
-        collection_id=sp_col.id, track_mapping_id=mapping.id
-    )
-    await db.add_track_to_collection(
-        collection_id=ym_col.id, track_mapping_id=mapping.id
-    )
+    await db.add_track_to_collection(collection_id=sp_col.id, track_mapping_id=mapping.id)
+    await db.add_track_to_collection(collection_id=ym_col.id, track_mapping_id=mapping.id)
 
     stats = await engine.run_sync(mode="full")
 
@@ -241,19 +232,11 @@ async def test_incremental_no_removals(db):
     await db.finish_sync_run(run.id, status="completed")
 
     # Seed a mapping that would be "removed"
-    mapping = await db.upsert_track_mapping(
-        artist="Art", title="Song", spotify_id="sp1", yandex_id="ym1"
-    )
-    sp_col = await db.create_collection(
-        service="spotify", collection_type="liked", title="Liked Songs"
-    )
-    ym_col = await db.create_collection(
-        service="yandex", collection_type="liked", title="Liked Songs"
-    )
+    mapping = await db.upsert_track_mapping(artist="Art", title="Song", spotify_id="sp1", yandex_id="ym1")
+    sp_col = await db.create_collection(service="spotify", collection_type="liked", title="Liked Songs")
+    ym_col = await db.create_collection(service="yandex", collection_type="liked", title="Liked Songs")
     await db.pair_collections(sp_col.id, ym_col.id)
-    await db.add_track_to_collection(
-        collection_id=sp_col.id, track_mapping_id=mapping.id
-    )
+    await db.add_track_to_collection(collection_id=sp_col.id, track_mapping_id=mapping.id)
 
     stats = await engine.run_sync()  # should be incremental
 
@@ -316,9 +299,7 @@ async def test_concurrent_sync_blocked(db):
 async def test_retry_unmatched(db):
     """Full sync should retry previously unmatched tracks."""
     # Pre-populate an unmatched entry
-    await db.add_unmatched(
-        source_service="spotify", source_id="sp1", artist="Art", title="Song"
-    )
+    await db.add_unmatched(source_service="spotify", source_id="sp1", artist="Art", title="Song")
 
     sp = MockClient(liked_tracks=[])
     ym = MockClient(
@@ -379,15 +360,16 @@ def test_is_good_match_transliteration():
 def test_is_good_match_fuzzy_close():
     """Fuzzy match for close but non-exact names (Смоки→smoki vs smoky)."""
     # "smoki mo" vs "smoky mo" — ratio ~0.93, should pass
-    assert SyncEngine._is_good_match(
-        "Смоки Мо", "Потерянный рай", "Smoky Mo", "Потерянный рай"
-    )
+    assert SyncEngine._is_good_match("Смоки Мо", "Потерянный рай", "Smoky Mo", "Потерянный рай")
 
 
 def test_is_good_match_fuzzy_with_matching_duration():
     """Fuzzy match + matching duration should pass."""
     assert SyncEngine._is_good_match(
-        "Смоки Мо", "Потерянный рай", "Smoky Mo", "Потерянный рай",
+        "Смоки Мо",
+        "Потерянный рай",
+        "Smoky Mo",
+        "Потерянный рай",
         query_duration_ms=240000,
         found_duration_ms=240500,  # within ±1s
     )
@@ -396,7 +378,10 @@ def test_is_good_match_fuzzy_with_matching_duration():
 def test_is_good_match_fuzzy_with_mismatched_duration():
     """Fuzzy match + mismatched duration should fail."""
     assert not SyncEngine._is_good_match(
-        "Смоки Мо", "Потерянный рай", "Smoky Mo", "Совсем другая песня",
+        "Смоки Мо",
+        "Потерянный рай",
+        "Smoky Mo",
+        "Совсем другая песня",
         query_duration_ms=240000,
         found_duration_ms=180000,  # 60s difference
     )
@@ -406,7 +391,10 @@ def test_is_good_match_duration_ignored_for_exact():
     """Duration is NOT checked for exact/contains matches."""
     # Exact match with wildly different duration — still passes
     assert SyncEngine._is_good_match(
-        "Artist", "Song", "Artist", "Song",
+        "Artist",
+        "Song",
+        "Artist",
+        "Song",
         query_duration_ms=100000,
         found_duration_ms=300000,
     )
@@ -420,7 +408,10 @@ def test_is_good_match_rejects_unrelated():
 def test_is_good_match_fuzzy_duration_tolerance_boundary():
     """Duration exactly at ±1s boundary should pass."""
     assert SyncEngine._is_good_match(
-        "Смоки Мо", "Потерянный рай", "Smoky Mo", "Потерянный рай",
+        "Смоки Мо",
+        "Потерянный рай",
+        "Smoky Mo",
+        "Потерянный рай",
         query_duration_ms=240000,
         found_duration_ms=241000,  # exactly 1s difference
     )

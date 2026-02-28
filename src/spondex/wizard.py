@@ -21,11 +21,7 @@ from spondex.config import AppConfig, SpotifyConfig, SyncConfig, YandexConfig
 console = Console()
 
 SPOTIFY_SCOPES = (
-    "user-library-read "
-    "user-library-modify "
-    "playlist-read-private "
-    "playlist-modify-private "
-    "playlist-modify-public"
+    "user-library-read user-library-modify playlist-read-private playlist-modify-private playlist-modify-public"
 )
 
 
@@ -76,8 +72,9 @@ def _wizard_spotify() -> SpotifyConfig:
     sp = spotipy.Spotify(auth=token_info["access_token"])
     user = sp.current_user()
     console.print(
-        "[green]Spotify authorized[/green] as "
-        "[bold]{name}[/bold].\n".format(name=user.get("display_name", user.get("id", "?")))
+        "[green]Spotify authorized[/green] as [bold]{name}[/bold].\n".format(
+            name=user.get("display_name", user.get("id", "?"))
+        )
     )
 
     return SpotifyConfig(
@@ -97,8 +94,7 @@ def _wizard_yandex() -> YandexConfig:
     """Prompt for a Yandex Music token and validate it."""
     console.print("[bold]Step 2: Yandex Music[/bold]")
     console.print(
-        "Enter your Yandex Music OAuth token.\n"
-        "You can obtain it using browser dev-tools or a dedicated helper.\n"
+        "Enter your Yandex Music OAuth token.\nYou can obtain it using browser dev-tools or a dedicated helper.\n"
     )
 
     while True:
@@ -112,10 +108,7 @@ def _wizard_yandex() -> YandexConfig:
         try:
             client = YandexClient(token).init()
             name = client.me.account.display_name or client.me.account.login
-            console.print(
-                "[green]Yandex Music authorized[/green] as "
-                "[bold]{name}[/bold].\n".format(name=name)
-            )
+            console.print(f"[green]Yandex Music authorized[/green] as [bold]{name}[/bold].\n")
             return YandexConfig(token=SecretStr(token))
         except Exception:  # noqa: BLE001
             retry = Confirm.ask(

@@ -8,7 +8,6 @@ import tomllib
 from pathlib import Path
 
 import pytest
-
 from pydantic import SecretStr
 
 from spondex.config import (
@@ -24,7 +23,6 @@ from spondex.config import (
     load_config,
     save_config,
 )
-
 
 # ---------------------------------------------------------------------------
 # 1. Default values
@@ -363,3 +361,55 @@ def test_is_yandex_configured_false_when_empty():
 def test_is_yandex_configured_true_when_set():
     cfg = AppConfig(yandex=YandexConfig(token=SecretStr("tok")))
     assert cfg.is_yandex_configured() is True
+
+
+# ---------------------------------------------------------------------------
+# 16. Config permissions checks
+# ---------------------------------------------------------------------------
+
+
+def test_check_config_permissions_ok(base_dir: Path):
+    """check_config_permissions returns None for 600 permissions."""
+    from spondex.config import check_config_permissions
+
+    save_config(AppConfig())
+    config_path = base_dir / "config.toml"
+    os.chmod(config_path, 0o600)
+
+    assert check_config_permissions() is None
+
+
+def test_check_config_permissions_warns_group_readable(base_dir: Path):
+    """check_config_permissions warns when group can read."""
+    from spondex.config import check_config_permissions
+
+    save_config(AppConfig())
+    config_path = base_dir / "config.toml"
+    os.chmod(config_path, 0o644)
+
+    warning = check_config_permissions()
+    assert warning is not None
+    assert "permissive" in warning.lower() or "permission" in warning.lower()
+
+
+def test_check_config_permissions_no_file(base_dir: Path):
+    """check_config_permissions returns None when no config file."""
+    from spondex.config import check_config_permissions
+
+    assert check_config_permissions() is None
+
+
+def test_load_config_warns_on_bad_permissions(base_dir: Path):
+    """load_config emits a warning for overly permissive config."""
+    import warnings
+
+    save_config(AppConfig())
+    config_path = base_dir / "config.toml"
+    os.chmod(config_path, 0o644)
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        load_config()
+
+    assert len(w) >= 1
+    assert "permissive" in str(w[0].message).lower() or "permission" in str(w[0].message).lower()

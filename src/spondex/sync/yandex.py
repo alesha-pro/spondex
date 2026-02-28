@@ -42,15 +42,17 @@ class YandexClient:
             client = await asyncio.to_thread(Client, token)
             self._client = await asyncio.to_thread(client.init)
         except Exception as exc:
-            raise YandexAuthError(f"Yandex Music auth failed: {exc}") from exc
+            raise YandexAuthError(
+                f"Yandex Music auth failed: {exc}. "
+                "Your token may be invalid — run: "
+                "spondex config set yandex.token <new_token>"
+            ) from exc
         return self
 
     async def __aexit__(self, *exc: object) -> None:
         self._client = None
 
-    async def get_liked_tracks(
-        self, *, since: datetime | None = None
-    ) -> list[RemoteTrack]:
+    async def get_liked_tracks(self, *, since: datetime | None = None) -> list[RemoteTrack]:
         """Fetch liked tracks, optionally filtered by timestamp."""
         assert self._client is not None
 
@@ -61,9 +63,7 @@ class YandexClient:
             return []
 
         # The likes object may be a TracksList or list
-        track_shorts = (
-            likes if isinstance(likes, list) else getattr(likes, "tracks", likes)
-        )
+        track_shorts = likes if isinstance(likes, list) else getattr(likes, "tracks", likes)
 
         if not track_shorts:
             return []
@@ -130,17 +130,13 @@ class YandexClient:
         """Add tracks to liked."""
         assert self._client is not None
         if track_ids:
-            await asyncio.to_thread(
-                self._client.users_likes_tracks_add, track_ids
-            )
+            await asyncio.to_thread(self._client.users_likes_tracks_add, track_ids)
 
     async def unlike_tracks(self, track_ids: list[str]) -> None:
         """Remove tracks from liked."""
         assert self._client is not None
         if track_ids:
-            await asyncio.to_thread(
-                self._client.users_likes_tracks_remove, track_ids
-            )
+            await asyncio.to_thread(self._client.users_likes_tracks_remove, track_ids)
 
     async def search_track(self, artist: str, title: str) -> RemoteTrack | None:
         """Search for a track on Yandex Music."""

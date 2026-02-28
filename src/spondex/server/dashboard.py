@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 from contextlib import asynccontextmanager
+from datetime import UTC
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import structlog
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
+from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -63,7 +65,7 @@ async def _get_counts(db: Database) -> dict:
 
 async def _build_status(state: DaemonState, db: Database) -> dict:
     """Build the full status payload."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     status = state.get_status()
     status["counts"] = await _get_counts(db)
@@ -75,7 +77,7 @@ async def _build_status(state: DaemonState, db: Database) -> dict:
         if next_at:
             try:
                 dt = datetime.fromisoformat(next_at)
-                delta = (dt - datetime.now(timezone.utc)).total_seconds()
+                delta = (dt - datetime.now(UTC)).total_seconds()
                 sched["next_run_in_seconds"] = max(0, round(delta))
             except (ValueError, TypeError):
                 sched["next_run_in_seconds"] = None
@@ -99,15 +101,13 @@ def create_dashboard_app(state: DaemonState, db: Database) -> FastAPI:
                     data = await _build_status(state, db)
                     await manager.broadcast({"type": "status", "data": data})
                 except Exception:
-                    pass
+                    log.debug("broadcast_loop_error", exc_info=True)
 
         task = asyncio.create_task(_broadcast_loop())
         yield
         task.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await task
-        except asyncio.CancelledError:
-            pass
 
     app = FastAPI(title="spondex-dashboard", docs_url=None, redoc_url=None, lifespan=lifespan)
 
@@ -183,16 +183,6 @@ def create_dashboard_app(state: DaemonState, db: Database) -> FastAPI:
             "spotify": {"configured": cfg.is_spotify_configured()},
             "yandex": {"configured": cfg.is_yandex_configured()},
         }
-
-    @app.get("/api/charts/confidence")
-    async def api_charts_confidence() -> list[dict]:
-        return await db.get_confidence_distribution()
-
-    @app.get("/api/charts/activity")
-    async def api_charts_activity(
-        limit: int = Query(default=12, ge=1, le=30),
-    ) -> list[dict]:
-        return await db.get_sync_chart_data(limit)
 
     @app.post("/api/sync")
     async def api_sync_now(body: dict | None = None):  # noqa: ANN201

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 import pytest
@@ -11,10 +11,10 @@ import pytest
 from spondex.config import SpotifyConfig
 from spondex.sync.spotify import SpotifyClient
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_config() -> SpotifyConfig:
     return SpotifyConfig(
@@ -122,12 +122,8 @@ async def test_get_liked_tracks_pagination() -> None:
         if str(request.url).startswith("https://api.spotify.com/v1/me/tracks"):
             offset = int(request.url.params.get("offset", "0"))
             if offset == 0:
-                return httpx.Response(
-                    200, json=_liked_tracks_page(page1_items, has_next=True)
-                )
-            return httpx.Response(
-                200, json=_liked_tracks_page(page2_items, has_next=False)
-            )
+                return httpx.Response(200, json=_liked_tracks_page(page1_items, has_next=True))
+            return httpx.Response(200, json=_liked_tracks_page(page2_items, has_next=False))
         return httpx.Response(404)
 
     transport = httpx.MockTransport(handler)
@@ -161,15 +157,13 @@ async def test_get_liked_tracks_since_early_stop() -> None:
         if request.url.host == "accounts.spotify.com":
             return _token_response()
         if str(request.url).startswith("https://api.spotify.com/v1/me/tracks"):
-            return httpx.Response(
-                200, json=_liked_tracks_page(items, has_next=True)
-            )
+            return httpx.Response(200, json=_liked_tracks_page(items, has_next=True))
         return httpx.Response(404)
 
     transport = httpx.MockTransport(handler)
     config = _make_config()
 
-    since = datetime(2026, 2, 15, tzinfo=timezone.utc)
+    since = datetime(2026, 2, 15, tzinfo=UTC)
 
     async with SpotifyClient(config, _transport=transport) as client:
         tracks = await client.get_liked_tracks(since=since)
@@ -192,10 +186,7 @@ async def test_save_tracks_batching() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.host == "accounts.spotify.com":
             return _token_response()
-        if (
-            request.method == "PUT"
-            and str(request.url).startswith("https://api.spotify.com/v1/me/tracks")
-        ):
+        if request.method == "PUT" and str(request.url).startswith("https://api.spotify.com/v1/me/tracks"):
             put_bodies.append(json.loads(request.content))
             return httpx.Response(200)
         return httpx.Response(404)
@@ -228,10 +219,7 @@ async def test_remove_tracks() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.host == "accounts.spotify.com":
             return _token_response()
-        if (
-            request.method == "DELETE"
-            and str(request.url).startswith("https://api.spotify.com/v1/me/tracks")
-        ):
+        if request.method == "DELETE" and str(request.url).startswith("https://api.spotify.com/v1/me/tracks"):
             delete_bodies.append(json.loads(request.content))
             return httpx.Response(200)
         return httpx.Response(404)
@@ -321,9 +309,7 @@ async def test_rate_limit_retry(monkeypatch: pytest.MonkeyPatch) -> None:
         if str(request.url).startswith("https://api.spotify.com/v1/me/tracks"):
             call_count += 1
             if call_count == 1:
-                return httpx.Response(
-                    429, headers={"Retry-After": "2"}, json={"error": "rate limited"}
-                )
+                return httpx.Response(429, headers={"Retry-After": "2"}, json={"error": "rate limited"})
             return httpx.Response(200, json=_liked_tracks_page([]))
         return httpx.Response(404)
 
@@ -371,3 +357,92 @@ async def test_401_token_refresh_retry() -> None:
     assert api_call_count == 2
     # Initial token fetch + force refresh after 401
     assert token_refresh_count == 2
+
+
+# ---------------------------------------------------------------------------
+# 401 double-fail (actionable error message)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_401_double_fail_actionable_message() -> None:
+    """Repeated 401 raises SpotifyAuthError with actionable message."""
+    from spondex.sync.spotify import SpotifyAuthError
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "accounts.spotify.com":
+            return _token_response()
+        if str(request.url).startswith("https://api.spotify.com/v1/me/tracks"):
+            return httpx.Response(401, json={"error": "invalid token"})
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(handler)
+    config = _make_config()
+
+    async with SpotifyClient(config, _transport=transport) as client:
+        with pytest.raises(SpotifyAuthError, match="config set"):
+            await client.get_liked_tracks()
+
+
+# ---------------------------------------------------------------------------
+# Network retry with exponential backoff
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_network_retry_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Client retries on network error and succeeds."""
+    sleep_calls: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        sleep_calls.append(seconds)
+
+    monkeypatch.setattr("spondex.sync.spotify.asyncio.sleep", fake_sleep)
+
+    call_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        if request.url.host == "accounts.spotify.com":
+            return _token_response()
+        if str(request.url).startswith("https://api.spotify.com/v1/me/tracks"):
+            call_count += 1
+            if call_count == 1:
+                raise httpx.ConnectError("Connection refused")
+            return httpx.Response(200, json=_liked_tracks_page([]))
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(handler)
+    config = _make_config()
+
+    async with SpotifyClient(config, _transport=transport) as client:
+        tracks = await client.get_liked_tracks()
+
+    assert tracks == []
+    assert call_count == 2
+    assert sleep_calls == [1.0]  # 2^0 = 1
+
+
+@pytest.mark.asyncio
+async def test_network_retry_exhausted(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Client raises after exhausting network retries."""
+    from spondex.sync.spotify import SpotifyAPIError
+
+    sleep_calls: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        sleep_calls.append(seconds)
+
+    monkeypatch.setattr("spondex.sync.spotify.asyncio.sleep", fake_sleep)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "accounts.spotify.com":
+            return _token_response()
+        raise httpx.ConnectError("Connection refused")
+
+    transport = httpx.MockTransport(handler)
+    config = _make_config()
+
+    async with SpotifyClient(config, _transport=transport) as client:
+        with pytest.raises(SpotifyAPIError, match="Network error"):
+            await client.get_liked_tracks()

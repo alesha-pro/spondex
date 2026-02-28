@@ -9,7 +9,6 @@ import SyncHistory from './components/SyncHistory'
 import TrackTable from './components/TrackTable'
 import UnmatchedTable from './components/UnmatchedTable'
 import ConfigPanel from './components/ConfigPanel'
-import ChartPanel from './components/ChartPanel'
 
 type Tab = 'overview' | 'tracks' | 'unmatched' | 'config'
 
@@ -66,7 +65,6 @@ export default function App() {
             <Controls status={status} onAction={refresh} />
           </div>
           <StatsBar status={status} />
-          <ChartPanel />
           <SyncHistory />
         </>
       )}

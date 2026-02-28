@@ -9,7 +9,6 @@ from spondex.sync.differ import (
     normalize,
 )
 
-
 # -- normalize tests --
 
 
@@ -71,15 +70,11 @@ def test_match_key_normalized():
 
 
 def _sp(remote_id: str, artist: str, title: str) -> RemoteTrack:
-    return RemoteTrack(
-        service="spotify", remote_id=remote_id, artist=artist, title=title
-    )
+    return RemoteTrack(service="spotify", remote_id=remote_id, artist=artist, title=title)
 
 
 def _ym(remote_id: str, artist: str, title: str) -> RemoteTrack:
-    return RemoteTrack(
-        service="yandex", remote_id=remote_id, artist=artist, title=title
-    )
+    return RemoteTrack(service="yandex", remote_id=remote_id, artist=artist, title=title)
 
 
 def test_cross_match_exact():

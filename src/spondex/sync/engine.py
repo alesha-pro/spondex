@@ -121,9 +121,7 @@ class SyncEngine:
         log.info("sync_start", mode=effective_mode)
 
         # Start DB sync run
-        run = await self._db.start_sync_run(
-            direction="bidirectional", mode=effective_mode
-        )
+        run = await self._db.start_sync_run(direction="bidirectional", mode=effective_mode)
 
         stats = SyncStats()
         try:
@@ -135,29 +133,19 @@ class SyncEngine:
                 sp_col, ym_col = await self._ensure_collections()
 
                 if effective_mode == "full":
-                    await self._full_sync(
-                        sp_client, ym_client, sp_col.id, ym_col.id, stats
-                    )
+                    await self._full_sync(sp_client, ym_client, sp_col.id, ym_col.id, stats)
                 else:
                     since = (
-                        datetime.fromisoformat(str(last_run.finished_at))
-                        if last_run and last_run.finished_at
-                        else None
+                        datetime.fromisoformat(str(last_run.finished_at)) if last_run and last_run.finished_at else None
                     )
-                    await self._incremental_sync(
-                        sp_client, ym_client, sp_col.id, ym_col.id, stats, since
-                    )
+                    await self._incremental_sync(sp_client, ym_client, sp_col.id, ym_col.id, stats, since)
 
-            await self._db.finish_sync_run(
-                run.id, status="completed", stats_json=stats.to_json()
-            )
+            await self._db.finish_sync_run(run.id, status="completed", stats_json=stats.to_json())
             log.info("sync_completed", stats=stats.to_json())
             return stats
 
         except Exception as exc:
-            await self._db.finish_sync_run(
-                run.id, status="failed", error_message=str(exc)
-            )
+            await self._db.finish_sync_run(run.id, status="failed", error_message=str(exc))
             log.error("sync_failed", error=str(exc))
             raise
 
@@ -177,21 +165,13 @@ class SyncEngine:
 
     async def _ensure_collections(self):
         """Ensure 'liked' collections exist for both services, paired together."""
-        sp_col = await self._db.find_collection(
-            service="spotify", collection_type="liked"
-        )
-        ym_col = await self._db.find_collection(
-            service="yandex", collection_type="liked"
-        )
+        sp_col = await self._db.find_collection(service="spotify", collection_type="liked")
+        ym_col = await self._db.find_collection(service="yandex", collection_type="liked")
 
         if not sp_col:
-            sp_col = await self._db.create_collection(
-                service="spotify", collection_type="liked", title="Liked Songs"
-            )
+            sp_col = await self._db.create_collection(service="spotify", collection_type="liked", title="Liked Songs")
         if not ym_col:
-            ym_col = await self._db.create_collection(
-                service="yandex", collection_type="liked", title="Liked Songs"
-            )
+            ym_col = await self._db.create_collection(service="yandex", collection_type="liked", title="Liked Songs")
 
         if sp_col.paired_id is None or ym_col.paired_id is None:
             await self._db.pair_collections(sp_col.id, ym_col.id)
@@ -204,9 +184,7 @@ class SyncEngine:
 
     async def _full_sync(self, sp, ym, sp_col_id, ym_col_id, stats):
         # 1. Fetch ALL tracks in parallel
-        sp_tracks, ym_tracks = await asyncio.gather(
-            sp.get_liked_tracks(), ym.get_liked_tracks()
-        )
+        sp_tracks, ym_tracks = await asyncio.gather(sp.get_liked_tracks(), ym.get_liked_tracks())
 
         # 2. Load existing DB state
         db_sp_tracks = await self._db.list_collection_tracks(sp_col_id)
@@ -237,11 +215,13 @@ class SyncEngine:
         ym_new = [t for t in ym_tracks if t.remote_id not in ym_id_to_mapping]
 
         sp_removed_mappings = [
-            m for mid, m in mappings_by_id.items()
+            m
+            for mid, m in mappings_by_id.items()
             if mid in sp_mapping_ids and m.spotify_id and m.spotify_id not in remote_sp_ids
         ]
         ym_removed_mappings = [
-            m for mid, m in mappings_by_id.items()
+            m
+            for mid, m in mappings_by_id.items()
             if mid in ym_mapping_ids and m.yandex_id and m.yandex_id not in remote_ym_ids
         ]
 
@@ -276,14 +256,10 @@ class SyncEngine:
         if self._config.sync.propagate_deletions:
             for m in sp_removed_mappings:
                 try:
-                    await self._db.mark_track_removed(
-                        collection_id=sp_col_id, track_mapping_id=m.id
-                    )
+                    await self._db.mark_track_removed(collection_id=sp_col_id, track_mapping_id=m.id)
                     if m.yandex_id:
                         await ym.unlike_tracks([m.yandex_id])
-                        await self._db.mark_track_removed(
-                            collection_id=ym_col_id, track_mapping_id=m.id
-                        )
+                        await self._db.mark_track_removed(collection_id=ym_col_id, track_mapping_id=m.id)
                     stats.sp_removed += 1
                 except Exception as exc:
                     log.warning("sp_remove_error", error=str(exc))
@@ -291,14 +267,10 @@ class SyncEngine:
 
             for m in ym_removed_mappings:
                 try:
-                    await self._db.mark_track_removed(
-                        collection_id=ym_col_id, track_mapping_id=m.id
-                    )
+                    await self._db.mark_track_removed(collection_id=ym_col_id, track_mapping_id=m.id)
                     if m.spotify_id:
                         await sp.remove_tracks([m.spotify_id])
-                        await self._db.mark_track_removed(
-                            collection_id=sp_col_id, track_mapping_id=m.id
-                        )
+                        await self._db.mark_track_removed(collection_id=sp_col_id, track_mapping_id=m.id)
                     stats.ym_removed += 1
                 except Exception as exc:
                     log.warning("ym_remove_error", error=str(exc))
@@ -306,7 +278,13 @@ class SyncEngine:
 
         # 5. Propagate additions
         await self._propagate_additions(
-            sp, ym, sp_col_id, ym_col_id, unmatched_sp, unmatched_ym, stats,
+            sp,
+            ym,
+            sp_col_id,
+            ym_col_id,
+            unmatched_sp,
+            unmatched_ym,
+            stats,
             existing_sp_ids=remote_sp_ids,
             existing_ym_ids=remote_ym_ids,
         )
@@ -355,7 +333,13 @@ class SyncEngine:
         existing_sp = {t.remote_id for t in sp_tracks}
         existing_ym = {t.remote_id for t in ym_tracks}
         await self._propagate_additions(
-            sp, ym, sp_col_id, ym_col_id, unmatched_sp, unmatched_ym, stats,
+            sp,
+            ym,
+            sp_col_id,
+            ym_col_id,
+            unmatched_sp,
+            unmatched_ym,
+            stats,
             existing_sp_ids=existing_sp,
             existing_ym_ids=existing_ym,
         )
@@ -428,18 +412,21 @@ class SyncEngine:
             return False
 
         # Duration veto: if both known, must be within tolerance
-        if (
+        return not (
             query_duration_ms is not None
             and found_duration_ms is not None
             and abs(query_duration_ms - found_duration_ms) > SyncEngine._DURATION_TOLERANCE_MS
-        ):
-            return False
-
-        return True
+        )
 
     async def _propagate_additions(
-        self, sp, ym, sp_col_id, ym_col_id,
-        unmatched_sp, unmatched_ym, stats,
+        self,
+        sp,
+        ym,
+        sp_col_id,
+        ym_col_id,
+        unmatched_sp,
+        unmatched_ym,
+        stats,
         *,
         existing_sp_ids: set[str] | None = None,
         existing_ym_ids: set[str] | None = None,
@@ -464,7 +451,10 @@ class SyncEngine:
 
                 found = await ym.search_track(track.artist, track.title)
                 if found and self._is_good_match(
-                    track.artist, track.title, found.artist, found.title,
+                    track.artist,
+                    track.title,
+                    found.artist,
+                    found.title,
                     query_duration_ms=track.duration_ms,
                     found_duration_ms=found.duration_ms,
                 ):
@@ -519,7 +509,10 @@ class SyncEngine:
 
                 found = await sp.search_track(track.artist, track.title)
                 if found and self._is_good_match(
-                    track.artist, track.title, found.artist, found.title,
+                    track.artist,
+                    track.title,
+                    found.artist,
+                    found.title,
                     query_duration_ms=track.duration_ms,
                     found_duration_ms=found.duration_ms,
                 ):
@@ -560,7 +553,7 @@ class SyncEngine:
 
     async def _retry_unmatched(self, sp, ym, sp_col_id, ym_col_id, stats):
         """Retry previously unmatched tracks (full sync only)."""
-        for source_service, client, target_col_id, add_fn, source_col_id in [
+        for source_service, client, target_col_id, add_fn, _source_col_id in [
             ("spotify", ym, ym_col_id, ym.like_tracks, sp_col_id),
             ("yandex", sp, sp_col_id, sp.save_tracks, ym_col_id),
         ]:
@@ -570,9 +563,7 @@ class SyncEngine:
                     continue
                 try:
                     found = await client.search_track(um.artist, um.title)
-                    if found and self._is_good_match(
-                        um.artist, um.title, found.artist, found.title
-                    ):
+                    if found and self._is_good_match(um.artist, um.title, found.artist, found.title):
                         id_kw = (
                             {"yandex_id": found.remote_id}
                             if source_service == "spotify"

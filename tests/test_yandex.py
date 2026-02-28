@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -24,18 +24,14 @@ def _make_mock_client() -> MagicMock:
     return mock_client
 
 
-def _make_track_short(
-    track_id: str, timestamp: str | None = None
-) -> MagicMock:
+def _make_track_short(track_id: str, timestamp: str | None = None) -> MagicMock:
     ts = MagicMock()
     ts.track_id = track_id
     ts.timestamp = timestamp
     return ts
 
 
-def _make_full_track(
-    track_id: str, title: str, artist_name: str, duration_ms: int | None = None
-) -> MagicMock:
+def _make_full_track(track_id: str, title: str, artist_name: str, duration_ms: int | None = None) -> MagicMock:
     track = MagicMock()
     track.id = track_id
     track.title = title
@@ -92,7 +88,7 @@ async def test_get_liked_tracks_since_filters_by_timestamp() -> None:
     full_new = _make_full_track("222", "New Song", "New Artist")
     mock_client.tracks.return_value = [full_new]
 
-    since = datetime(2026, 1, 15, tzinfo=timezone.utc)
+    since = datetime(2026, 1, 15, tzinfo=UTC)
 
     with patch("yandex_music.Client", return_value=mock_client):
         async with YandexClient(_make_config()) as yc:
@@ -171,3 +167,21 @@ async def test_search_track_returns_none_when_not_found() -> None:
             track = await yc.search_track("Nobody", "No Song")
 
     assert track is None
+
+
+# ---------------------------------------------------------------------------
+# Auth error contains actionable message
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_auth_error_contains_config_set_hint() -> None:
+    """YandexAuthError message suggests config set command."""
+    from spondex.sync.yandex import YandexAuthError
+
+    with (
+        patch("yandex_music.Client", side_effect=Exception("invalid token")),
+        pytest.raises(YandexAuthError, match="config set"),
+    ):
+        async with YandexClient(_make_config()):
+            pass

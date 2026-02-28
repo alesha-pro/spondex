@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import atexit
+import contextlib
 import os
 import signal
 import socket
@@ -165,6 +166,8 @@ class Daemon:
 
         # -- grandchild: the actual daemon process -----------------------------
 
+        os.umask(0o077)
+
         # Redirect standard file descriptors to /dev/null.
         # All real logging goes through structlog → RotatingFileHandler
         # (configured in _run_daemon via setup_logging).
@@ -213,10 +216,8 @@ class Daemon:
             time.sleep(0.1)
 
         log.warning("daemon did not stop in time; sending SIGKILL", pid=pid)
-        try:
+        with contextlib.suppress(ProcessLookupError):
             os.kill(pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
         self._cleanup()
 
     # -- Internal daemon loop -----------------------------------------------

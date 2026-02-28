@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import os
+import stat
 import tomllib
 from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field, SecretStr
-
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -128,8 +128,29 @@ def config_exists() -> bool:
 # ---------------------------------------------------------------------------
 
 
+def check_config_permissions() -> str | None:
+    """Check config file permissions and return a warning if too open."""
+    path = get_base_dir() / _CONFIG_FILE
+    if not path.is_file():
+        return None
+    mode = os.stat(path).st_mode
+    if mode & (stat.S_IRWXG | stat.S_IRWXO):
+        return (
+            f"Config file {path} has overly permissive permissions "
+            f"(mode={oct(stat.S_IMODE(mode))}). "
+            f"Run: chmod 600 {path}"
+        )
+    return None
+
+
 def load_config() -> AppConfig:
     """Load configuration from TOML, falling back to defaults if the file is missing."""
+    import warnings
+
+    warning = check_config_permissions()
+    if warning:
+        warnings.warn(warning, stacklevel=2)
+
     path = get_base_dir() / _CONFIG_FILE
     if not path.is_file():
         return AppConfig()

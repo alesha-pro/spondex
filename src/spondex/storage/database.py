@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import contextlib
+from datetime import UTC, datetime
 from pathlib import Path
 
 import aiosqlite
@@ -85,7 +86,7 @@ CREATE TABLE IF NOT EXISTS sync_runs (
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 class Database:
@@ -152,9 +153,7 @@ class Database:
         return self._row_to_track_mapping(row)
 
     async def get_track_mapping_by_id(self, mapping_id: int) -> TrackMapping | None:
-        cur = await self.conn.execute(
-            "SELECT * FROM track_mapping WHERE id = ?", (mapping_id,)
-        )
+        cur = await self.conn.execute("SELECT * FROM track_mapping WHERE id = ?", (mapping_id,))
         row = await cur.fetchone()
         return self._row_to_track_mapping(row) if row else None
 
@@ -165,13 +164,9 @@ class Database:
         yandex_id: str | None = None,
     ) -> TrackMapping | None:
         if spotify_id:
-            cur = await self.conn.execute(
-                "SELECT * FROM track_mapping WHERE spotify_id = ?", (spotify_id,)
-            )
+            cur = await self.conn.execute("SELECT * FROM track_mapping WHERE spotify_id = ?", (spotify_id,))
         elif yandex_id:
-            cur = await self.conn.execute(
-                "SELECT * FROM track_mapping WHERE yandex_id = ?", (yandex_id,)
-            )
+            cur = await self.conn.execute("SELECT * FROM track_mapping WHERE yandex_id = ?", (yandex_id,))
         else:
             return None
         row = await cur.fetchone()
@@ -206,9 +201,7 @@ class Database:
         return self._row_to_collection(row)
 
     async def get_collection(self, collection_id: int) -> Collection | None:
-        cur = await self.conn.execute(
-            "SELECT * FROM collection WHERE id = ?", (collection_id,)
-        )
+        cur = await self.conn.execute("SELECT * FROM collection WHERE id = ?", (collection_id,))
         row = await cur.fetchone()
         return self._row_to_collection(row) if row else None
 
@@ -234,21 +227,15 @@ class Database:
 
     async def list_collections(self, service: str | None = None) -> list[Collection]:
         if service:
-            cur = await self.conn.execute(
-                "SELECT * FROM collection WHERE service = ? ORDER BY id", (service,)
-            )
+            cur = await self.conn.execute("SELECT * FROM collection WHERE service = ? ORDER BY id", (service,))
         else:
             cur = await self.conn.execute("SELECT * FROM collection ORDER BY id")
         rows = await cur.fetchall()
         return [self._row_to_collection(r) for r in rows]
 
     async def pair_collections(self, id_a: int, id_b: int) -> None:
-        await self.conn.execute(
-            "UPDATE collection SET paired_id = ? WHERE id = ?", (id_b, id_a)
-        )
-        await self.conn.execute(
-            "UPDATE collection SET paired_id = ? WHERE id = ?", (id_a, id_b)
-        )
+        await self.conn.execute("UPDATE collection SET paired_id = ? WHERE id = ?", (id_b, id_a))
+        await self.conn.execute("UPDATE collection SET paired_id = ? WHERE id = ?", (id_a, id_b))
         await self.conn.commit()
 
     # -- collection_track -----------------------------------------------------
@@ -278,9 +265,7 @@ class Database:
         await self.conn.commit()
         return self._row_to_collection_track(row)
 
-    async def mark_track_removed(
-        self, *, collection_id: int, track_mapping_id: int
-    ) -> None:
+    async def mark_track_removed(self, *, collection_id: int, track_mapping_id: int) -> None:
         now = _now_iso()
         await self.conn.execute(
             "UPDATE collection_track SET removed_at = ? WHERE collection_id = ? AND track_mapping_id = ?",
@@ -403,17 +388,13 @@ class Database:
         return self._row_to_sync_run(row)
 
     async def list_sync_runs(self, *, limit: int = 20) -> list[SyncRun]:
-        cur = await self.conn.execute(
-            "SELECT * FROM sync_runs ORDER BY id DESC LIMIT ?", (limit,)
-        )
+        cur = await self.conn.execute("SELECT * FROM sync_runs ORDER BY id DESC LIMIT ?", (limit,))
         rows = await cur.fetchall()
         return [self._row_to_sync_run(r) for r in rows]
 
     async def get_last_successful_sync(self) -> SyncRun | None:
         """Return the most recent completed sync run, or None."""
-        cur = await self.conn.execute(
-            "SELECT * FROM sync_runs WHERE status = 'completed' ORDER BY id DESC LIMIT 1"
-        )
+        cur = await self.conn.execute("SELECT * FROM sync_runs WHERE status = 'completed' ORDER BY id DESC LIMIT 1")
         row = await cur.fetchone()
         return self._row_to_sync_run(row) if row else None
 
@@ -466,9 +447,7 @@ class Database:
         rows = await cur.fetchall()
         return [self._row_to_track_mapping(r) for r in rows]
 
-    async def list_unmatched_paginated(
-        self, limit: int = 50, offset: int = 0
-    ) -> list[Unmatched]:
+    async def list_unmatched_paginated(self, limit: int = 50, offset: int = 0) -> list[Unmatched]:
         cur = await self.conn.execute(
             "SELECT * FROM unmatched ORDER BY id DESC LIMIT ? OFFSET ?",
             (limit, offset),
@@ -476,9 +455,7 @@ class Database:
         rows = await cur.fetchall()
         return [self._row_to_unmatched(r) for r in rows]
 
-    async def list_sync_runs_paginated(
-        self, limit: int = 20, offset: int = 0
-    ) -> list[SyncRun]:
+    async def list_sync_runs_paginated(self, limit: int = 20, offset: int = 0) -> list[SyncRun]:
         cur = await self.conn.execute(
             "SELECT * FROM sync_runs ORDER BY id DESC LIMIT ? OFFSET ?",
             (limit, offset),
@@ -505,59 +482,9 @@ class Database:
             for r in rows
         ]
 
-    async def get_confidence_distribution(self) -> list[dict]:
-        """Return confidence buckets for charting."""
-        cur = await self.conn.execute(
-            """
-            SELECT
-                CASE
-                    WHEN match_confidence >= 0.95 THEN 'exact'
-                    WHEN match_confidence >= 0.85 THEN 'high'
-                    WHEN match_confidence >= 0.70 THEN 'medium'
-                    ELSE 'low'
-                END AS bucket,
-                COUNT(*) AS count
-            FROM track_mapping
-            GROUP BY bucket
-            ORDER BY MIN(match_confidence) DESC
-            """
-        )
-        rows = await cur.fetchall()
-        return [{"bucket": row["bucket"], "count": row["count"]} for row in rows]
-
-    async def get_sync_chart_data(self, limit: int = 12) -> list[dict]:
-        """Return recent sync runs with parsed stats for charting."""
-        cur = await self.conn.execute(
-            "SELECT * FROM sync_runs WHERE status = 'completed' ORDER BY id DESC LIMIT ?",
-            (limit,),
-        )
-        rows = await cur.fetchall()
-        result = []
-        for row in rows:
-            run = self._row_to_sync_run(row)
-            stats: dict = {}
-            if run.stats_json:
-                import json
-                try:
-                    stats = json.loads(run.stats_json)
-                except (ValueError, TypeError):
-                    pass
-            result.append({
-                "id": run.id,
-                "started_at": str(run.started_at),
-                "mode": run.mode,
-                "sp_added": stats.get("sp_added", 0),
-                "ym_added": stats.get("ym_added", 0),
-                "cross_matched": stats.get("cross_matched", 0),
-                "unmatched": stats.get("unmatched", 0),
-            })
-        return list(reversed(result))
-
     # -- batch helpers --------------------------------------------------------
 
-    async def get_track_mappings_by_ids(
-        self, mapping_ids: list[int]
-    ) -> dict[int, TrackMapping]:
+    async def get_track_mappings_by_ids(self, mapping_ids: list[int]) -> dict[int, TrackMapping]:
         """Fetch multiple track mappings by ID in a single query."""
         if not mapping_ids:
             return {}

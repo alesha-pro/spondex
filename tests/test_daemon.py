@@ -6,10 +6,7 @@ import os
 import socket
 from pathlib import Path
 
-import pytest
-
 from spondex.daemon import Daemon, ensure_clean_socket
-
 
 # ---------------------------------------------------------------------------
 # Daemon.__init__
@@ -154,3 +151,45 @@ class TestEnsureCleanSocket:
             ensure_clean_socket(sock_path)
 
             assert not sock_path.exists()
+
+
+# ---------------------------------------------------------------------------
+# Stale PID recovery
+# ---------------------------------------------------------------------------
+
+
+class TestStalePidRecovery:
+    """is_running returns False and cleans up for non-existent PIDs."""
+
+    def test_stale_pid_cleans_up(self, base_dir: Path) -> None:
+        """Writing a non-existent PID → is_running returns False and removes file."""
+        d = Daemon()
+        d.pid_path.write_text("99999999")
+        assert d.pid_path.exists()
+
+        assert d.is_running() is False
+        assert not d.pid_path.exists()
+
+    def test_get_pid_still_returns_stale_value(self, base_dir: Path) -> None:
+        """get_pid reads the file even if PID is stale (doesn't check liveness)."""
+        d = Daemon()
+        d.pid_path.write_text("99999999")
+        assert d.get_pid() == 99999999
+
+
+# ---------------------------------------------------------------------------
+# Stale socket cleanup
+# ---------------------------------------------------------------------------
+
+
+class TestStaleSocketCleanup:
+    """ensure_clean_socket removes unconnectable sockets."""
+
+    def test_removes_regular_file_not_socket(self, tmp_path: Path) -> None:
+        """A regular file at the socket path is NOT removed (only sockets)."""
+        sock_path = tmp_path / "daemon.sock"
+        sock_path.write_text("not a socket")
+
+        # ConnectionRefused / OSError → removed
+        ensure_clean_socket(sock_path)
+        assert not sock_path.exists()

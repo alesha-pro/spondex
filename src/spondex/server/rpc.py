@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+import contextlib
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import structlog
@@ -47,7 +48,7 @@ class DaemonState:
     """Holds mutable runtime state shared across the daemon."""
 
     def __init__(self) -> None:
-        self.started_at: datetime = datetime.now(timezone.utc)
+        self.started_at: datetime = datetime.now(UTC)
         self.shutdown_event: asyncio.Event = asyncio.Event()
         self.engine: SyncEngine | None = None
         self.scheduler: SyncScheduler | None = None
@@ -57,7 +58,7 @@ class DaemonState:
 
     def get_status(self) -> dict:
         """Return a snapshot of the current daemon status."""
-        uptime = (datetime.now(timezone.utc) - self.started_at).total_seconds()
+        uptime = (datetime.now(UTC) - self.started_at).total_seconds()
         status: dict = {
             "uptime_seconds": round(uptime, 2),
             "started_at": self.started_at.isoformat(),
@@ -89,10 +90,18 @@ async def _dispatch(cmd: str, params: dict, state: DaemonState) -> RpcResponse:
         return RpcResponse()
 
     if cmd == "status":
-        return RpcResponse(data=state.get_status())
+        data = state.get_status()
+        if state.db:
+            with contextlib.suppress(Exception):
+                data["counts"] = {
+                    "track_mappings": await state.db.count_track_mappings(),
+                    "unmatched": await state.db.count_unmatched(),
+                    "sync_runs": await state.db.count_sync_runs(),
+                }
+        return RpcResponse(data=data)
 
     if cmd == "health":
-        uptime = (datetime.now(timezone.utc) - state.started_at).total_seconds()
+        uptime = (datetime.now(UTC) - state.started_at).total_seconds()
         return RpcResponse(data={"uptime_seconds": round(uptime, 2)})
 
     if cmd == "shutdown":
@@ -140,7 +149,7 @@ def create_rpc_app(state: DaemonState) -> FastAPI:
 
     @app.get("/health", response_model=RpcResponse)
     async def health_endpoint() -> RpcResponse:
-        uptime = (datetime.now(timezone.utc) - state.started_at).total_seconds()
+        uptime = (datetime.now(UTC) - state.started_at).total_seconds()
         return RpcResponse(data={"uptime_seconds": round(uptime, 2)})
 
     return app

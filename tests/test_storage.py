@@ -26,9 +26,7 @@ async def db(tmp_path):
 
 @pytest.mark.asyncio()
 async def test_connect_creates_tables(db: Database):
-    cur = await db.conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-    )
+    cur = await db.conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
     tables = {row["name"] for row in await cur.fetchall()}
     assert tables >= {"track_mapping", "collection", "collection_track", "unmatched", "sync_runs"}
 
@@ -47,9 +45,7 @@ async def test_foreign_keys_enabled(db: Database):
 
 @pytest.mark.asyncio()
 async def test_upsert_track_mapping_insert(db: Database):
-    tm = await db.upsert_track_mapping(
-        artist="Radiohead", title="Creep", spotify_id="sp_1"
-    )
+    tm = await db.upsert_track_mapping(artist="Radiohead", title="Creep", spotify_id="sp_1")
     assert tm.id is not None
     assert tm.artist == "Radiohead"
     assert tm.spotify_id == "sp_1"
@@ -59,12 +55,8 @@ async def test_upsert_track_mapping_insert(db: Database):
 
 @pytest.mark.asyncio()
 async def test_upsert_track_mapping_update_adds_yandex(db: Database):
-    tm1 = await db.upsert_track_mapping(
-        artist="Radiohead", title="Creep", spotify_id="sp_1"
-    )
-    tm2 = await db.upsert_track_mapping(
-        artist="Radiohead", title="Creep", spotify_id="sp_1", yandex_id="ya_1"
-    )
+    tm1 = await db.upsert_track_mapping(artist="Radiohead", title="Creep", spotify_id="sp_1")
+    tm2 = await db.upsert_track_mapping(artist="Radiohead", title="Creep", spotify_id="sp_1", yandex_id="ya_1")
     assert tm2.id == tm1.id
     assert tm2.yandex_id == "ya_1"
     assert tm2.spotify_id == "sp_1"
@@ -72,9 +64,7 @@ async def test_upsert_track_mapping_update_adds_yandex(db: Database):
 
 @pytest.mark.asyncio()
 async def test_find_track_mapping_by_spotify(db: Database):
-    await db.upsert_track_mapping(
-        artist="Muse", title="Hysteria", spotify_id="sp_2", yandex_id="ya_2"
-    )
+    await db.upsert_track_mapping(artist="Muse", title="Hysteria", spotify_id="sp_2", yandex_id="ya_2")
     found = await db.find_track_mapping(spotify_id="sp_2")
     assert found is not None
     assert found.artist == "Muse"
@@ -82,9 +72,7 @@ async def test_find_track_mapping_by_spotify(db: Database):
 
 @pytest.mark.asyncio()
 async def test_find_track_mapping_by_yandex(db: Database):
-    await db.upsert_track_mapping(
-        artist="Muse", title="Hysteria", spotify_id="sp_2", yandex_id="ya_2"
-    )
+    await db.upsert_track_mapping(artist="Muse", title="Hysteria", spotify_id="sp_2", yandex_id="ya_2")
     found = await db.find_track_mapping(yandex_id="ya_2")
     assert found is not None
     assert found.title == "Hysteria"
@@ -119,12 +107,8 @@ async def test_get_track_mapping_by_id(db: Database):
 
 @pytest.mark.asyncio()
 async def test_create_liked_collections(db: Database):
-    sp = await db.create_collection(
-        service="spotify", collection_type="liked", title="Liked Songs"
-    )
-    ya = await db.create_collection(
-        service="yandex", collection_type="liked", title="Мне нравится"
-    )
+    sp = await db.create_collection(service="spotify", collection_type="liked", title="Liked Songs")
+    ya = await db.create_collection(service="yandex", collection_type="liked", title="Мне нравится")
     assert sp.id is not None
     assert ya.id is not None
     assert sp.id != ya.id
@@ -132,9 +116,7 @@ async def test_create_liked_collections(db: Database):
 
 @pytest.mark.asyncio()
 async def test_find_liked_collection(db: Database):
-    await db.create_collection(
-        service="spotify", collection_type="liked", title="Liked Songs"
-    )
+    await db.create_collection(service="spotify", collection_type="liked", title="Liked Songs")
     found = await db.find_collection(service="spotify", collection_type="liked")
     assert found is not None
     assert found.title == "Liked Songs"
@@ -153,12 +135,8 @@ async def test_create_playlist_collection(db: Database):
 
 @pytest.mark.asyncio()
 async def test_pair_collections(db: Database):
-    sp = await db.create_collection(
-        service="spotify", collection_type="liked", title="Liked Songs"
-    )
-    ya = await db.create_collection(
-        service="yandex", collection_type="liked", title="Мне нравится"
-    )
+    sp = await db.create_collection(service="spotify", collection_type="liked", title="Liked Songs")
+    ya = await db.create_collection(service="yandex", collection_type="liked", title="Мне нравится")
     await db.pair_collections(sp.id, ya.id)
 
     sp_updated = await db.get_collection(sp.id)
@@ -171,9 +149,7 @@ async def test_pair_collections(db: Database):
 async def test_list_collections_by_service(db: Database):
     await db.create_collection(service="spotify", collection_type="liked", title="Liked")
     await db.create_collection(service="yandex", collection_type="liked", title="Liked")
-    await db.create_collection(
-        service="spotify", collection_type="playlist", remote_id="pl1", title="My PL"
-    )
+    await db.create_collection(service="spotify", collection_type="playlist", remote_id="pl1", title="My PL")
     sp_cols = await db.list_collections(service="spotify")
     assert len(sp_cols) == 2
     all_cols = await db.list_collections()
@@ -187,13 +163,9 @@ async def test_list_collections_by_service(db: Database):
 
 @pytest.mark.asyncio()
 async def test_add_track_to_collection(db: Database):
-    col = await db.create_collection(
-        service="spotify", collection_type="liked", title="Liked"
-    )
+    col = await db.create_collection(service="spotify", collection_type="liked", title="Liked")
     tm = await db.upsert_track_mapping(artist="A", title="B", spotify_id="sp_1")
-    ct = await db.add_track_to_collection(
-        collection_id=col.id, track_mapping_id=tm.id, position=0
-    )
+    ct = await db.add_track_to_collection(collection_id=col.id, track_mapping_id=tm.id, position=0)
     assert ct.collection_id == col.id
     assert ct.track_mapping_id == tm.id
     assert ct.removed_at is None
@@ -202,9 +174,7 @@ async def test_add_track_to_collection(db: Database):
 
 @pytest.mark.asyncio()
 async def test_mark_track_removed_and_list(db: Database):
-    col = await db.create_collection(
-        service="spotify", collection_type="liked", title="Liked"
-    )
+    col = await db.create_collection(service="spotify", collection_type="liked", title="Liked")
     tm = await db.upsert_track_mapping(artist="A", title="B", spotify_id="sp_1")
     await db.add_track_to_collection(collection_id=col.id, track_mapping_id=tm.id)
 
@@ -220,9 +190,7 @@ async def test_mark_track_removed_and_list(db: Database):
 
 @pytest.mark.asyncio()
 async def test_readd_removed_track_clears_removed_at(db: Database):
-    col = await db.create_collection(
-        service="spotify", collection_type="liked", title="Liked"
-    )
+    col = await db.create_collection(service="spotify", collection_type="liked", title="Liked")
     tm = await db.upsert_track_mapping(artist="A", title="B", spotify_id="sp_1")
     await db.add_track_to_collection(collection_id=col.id, track_mapping_id=tm.id)
     await db.mark_track_removed(collection_id=col.id, track_mapping_id=tm.id)
@@ -234,9 +202,7 @@ async def test_readd_removed_track_clears_removed_at(db: Database):
 
 @pytest.mark.asyncio()
 async def test_delete_removed_tracks(db: Database):
-    col = await db.create_collection(
-        service="spotify", collection_type="liked", title="Liked"
-    )
+    col = await db.create_collection(service="spotify", collection_type="liked", title="Liked")
     tm1 = await db.upsert_track_mapping(artist="A", title="1", spotify_id="sp_1")
     tm2 = await db.upsert_track_mapping(artist="B", title="2", spotify_id="sp_2")
 
@@ -258,29 +224,21 @@ async def test_delete_removed_tracks(db: Database):
 
 @pytest.mark.asyncio()
 async def test_add_unmatched(db: Database):
-    um = await db.add_unmatched(
-        source_service="spotify", source_id="sp_99", artist="Unknown", title="Song"
-    )
+    um = await db.add_unmatched(source_service="spotify", source_id="sp_99", artist="Unknown", title="Song")
     assert um.id is not None
     assert um.attempts == 1
 
 
 @pytest.mark.asyncio()
 async def test_add_unmatched_increments_attempts(db: Database):
-    await db.add_unmatched(
-        source_service="spotify", source_id="sp_99", artist="Unknown", title="Song"
-    )
-    um2 = await db.add_unmatched(
-        source_service="spotify", source_id="sp_99", artist="Unknown", title="Song"
-    )
+    await db.add_unmatched(source_service="spotify", source_id="sp_99", artist="Unknown", title="Song")
+    um2 = await db.add_unmatched(source_service="spotify", source_id="sp_99", artist="Unknown", title="Song")
     assert um2.attempts == 2
 
 
 @pytest.mark.asyncio()
 async def test_resolve_unmatched(db: Database):
-    await db.add_unmatched(
-        source_service="spotify", source_id="sp_99", artist="X", title="Y"
-    )
+    await db.add_unmatched(source_service="spotify", source_id="sp_99", artist="X", title="Y")
     await db.resolve_unmatched("spotify", "sp_99")
     remaining = await db.list_unmatched(source_service="spotify")
     assert len(remaining) == 0
@@ -288,12 +246,8 @@ async def test_resolve_unmatched(db: Database):
 
 @pytest.mark.asyncio()
 async def test_list_unmatched_filters_by_service(db: Database):
-    await db.add_unmatched(
-        source_service="spotify", source_id="sp_1", artist="A", title="1"
-    )
-    await db.add_unmatched(
-        source_service="yandex", source_id="ya_1", artist="B", title="2"
-    )
+    await db.add_unmatched(source_service="spotify", source_id="sp_1", artist="A", title="1")
+    await db.add_unmatched(source_service="yandex", source_id="ya_1", artist="B", title="2")
     sp = await db.list_unmatched(source_service="spotify")
     assert len(sp) == 1
     all_um = await db.list_unmatched()
@@ -321,21 +275,15 @@ async def test_start_and_finish_sync_run(db: Database):
 
 @pytest.mark.asyncio()
 async def test_sync_run_with_collection(db: Database):
-    col = await db.create_collection(
-        service="spotify", collection_type="liked", title="Liked"
-    )
-    run = await db.start_sync_run(
-        direction="spotify_to_yandex", mode="incremental", collection_id=col.id
-    )
+    col = await db.create_collection(service="spotify", collection_type="liked", title="Liked")
+    run = await db.start_sync_run(direction="spotify_to_yandex", mode="incremental", collection_id=col.id)
     assert run.collection_id == col.id
 
 
 @pytest.mark.asyncio()
 async def test_sync_run_failed(db: Database):
     run = await db.start_sync_run(direction="bidirectional", mode="full")
-    finished = await db.finish_sync_run(
-        run.id, status="failed", error_message="API rate limit exceeded"
-    )
+    finished = await db.finish_sync_run(run.id, status="failed", error_message="API rate limit exceeded")
     assert finished.status == "failed"
     assert finished.error_message == "API rate limit exceeded"
 
@@ -361,12 +309,8 @@ async def test_list_sync_runs_ordered_desc(db: Database):
 async def test_full_sync_scenario(db: Database):
     """Simulate a real liked-tracks sync: create collections, map tracks, sync."""
     # 1. Create paired liked collections
-    sp_liked = await db.create_collection(
-        service="spotify", collection_type="liked", title="Liked Songs"
-    )
-    ya_liked = await db.create_collection(
-        service="yandex", collection_type="liked", title="Мне нравится"
-    )
+    sp_liked = await db.create_collection(service="spotify", collection_type="liked", title="Liked Songs")
+    ya_liked = await db.create_collection(service="yandex", collection_type="liked", title="Мне нравится")
     await db.pair_collections(sp_liked.id, ya_liked.id)
 
     # 2. Start sync run
@@ -382,12 +326,8 @@ async def test_full_sync_scenario(db: Database):
     )
 
     # 4. Add to both collections
-    await db.add_track_to_collection(
-        collection_id=sp_liked.id, track_mapping_id=tm.id, position=0
-    )
-    await db.add_track_to_collection(
-        collection_id=ya_liked.id, track_mapping_id=tm.id, position=0
-    )
+    await db.add_track_to_collection(collection_id=sp_liked.id, track_mapping_id=tm.id, position=0)
+    await db.add_track_to_collection(collection_id=ya_liked.id, track_mapping_id=tm.id, position=0)
 
     # 5. Track we couldn't find on Yandex
     await db.add_unmatched(

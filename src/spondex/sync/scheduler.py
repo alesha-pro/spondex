@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+import contextlib
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import structlog
@@ -87,21 +88,20 @@ class SyncScheduler:
             if first_run:
                 # First run — sync immediately, don't wait
                 first_run = False
-                self._next_sync_at = datetime.now(timezone.utc).replace(microsecond=0)
+                self._next_sync_at = datetime.now(UTC).replace(microsecond=0)
             else:
                 # Calculate next sync time
                 from datetime import timedelta
-                self._next_sync_at = datetime.now(timezone.utc).replace(microsecond=0) + timedelta(seconds=self._interval)
+
+                self._next_sync_at = datetime.now(UTC).replace(microsecond=0) + timedelta(seconds=self._interval)
 
                 # Interruptible sleep
                 self._trigger_event.clear()
-                try:
+                with contextlib.suppress(TimeoutError):
                     await asyncio.wait_for(
                         self._wait_for_trigger_or_stop(),
                         timeout=self._interval,
                     )
-                except TimeoutError:
-                    pass  # Normal timeout — time to sync
 
             if self._stop_event.is_set():
                 break
@@ -116,7 +116,7 @@ class SyncScheduler:
 
             try:
                 await self._engine.run_sync(mode)
-                self._last_sync_at = datetime.now(timezone.utc)
+                self._last_sync_at = datetime.now(UTC)
             except Exception as exc:
                 log.error("scheduled_sync_failed", error=str(exc))
 
@@ -133,7 +133,5 @@ class SyncScheduler:
             for t in (trigger_task, stop_task):
                 if not t.done():
                     t.cancel()
-                    try:
+                    with contextlib.suppress(asyncio.CancelledError):
                         await t
-                    except asyncio.CancelledError:
-                        pass
