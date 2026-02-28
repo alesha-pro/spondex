@@ -1180,7 +1180,7 @@ requires-dist = [
     { name = "structlog", specifier = ">=23.0" },
     { name = "typer", specifier = ">=0.9" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.27" },
-    { name = "yandex-music", git = "https://github.com/MarshalX/yandex-music-api.git" },
+    { name = "yandex-music", specifier = ">=2.2.0" },
 ]
 provides-extras = ["dev"]
 
@@ -1439,13 +1439,13 @@ wheels = [
 [[package]]
 name = "yandex-music"
 version = "2.2.0"
-source = { git = "https://github.com/MarshalX/yandex-music-api.git#dfdcfaf3ef3d30ab47e1533cb1c6dd5bf3812cad" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
     { name = "aiohttp" },
     { name = "requests", extra = ["socks"] },
-    { name = "typing-extensions" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/42/85/9f1d9e1327b558d74ee43e3d3f84b7b7e536c79a372cf83fcbf392ab2d3c/yandex-music-2.2.0.tar.gz", hash = "sha256:46beaacf8206de212323264c89e0bd4f4e2e626483dfa58f95e78cacd1a102cf", size = 168538, upload-time = "2023-12-24T21:28:08.382Z" }
 
 [[package]]
 name = "yarl"

@@ -1,0 +1,40 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: pypi
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Build frontend
+        working-directory: src/dashboard
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build package
+        run: uv build
+
+      - name: Verify static files in wheel
+        run: |
+          unzip -l dist/spondex-*.whl | grep "spondex/server/static/"
+
+      - name: Publish to PyPI
+        run: uv publish --trusted-publishing always

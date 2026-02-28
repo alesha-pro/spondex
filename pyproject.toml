@@ -4,6 +4,15 @@ version = "0.1.0"
 description = "CLI daemon for syncing music libraries between Yandex Music and Spotify"
 readme = "README.md"
 requires-python = ">=3.12"
+license = "MIT"
+authors = [{ name = "alesha-pro" }]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Operating System :: POSIX",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio",
+]
 dependencies = [
     "typer>=0.9",
     "rich>=13.0",
@@ -13,12 +22,16 @@ dependencies = [
     "pydantic>=2.0",
     "structlog>=23.0",
     "spotipy>=2.25.2",
-    "yandex-music",
+    "yandex-music>=2.2.0",
     "aiosqlite>=0.19",
 ]
 
 [project.scripts]
 spondex = "spondex.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/alesha-pro/spondex"
+Repository = "https://github.com/alesha-pro/spondex"
 
 [build-system]
 requires = ["hatchling"]
@@ -27,8 +40,11 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/spondex"]
 
-[tool.uv.sources]
-yandex-music = { git = "https://github.com/MarshalX/yandex-music-api.git" }
+[tool.hatch.build.targets.sdist.force-include]
+"src/spondex/server/static" = "src/spondex/server/static"
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/spondex/server/static" = "spondex/server/static"
 
 [project.optional-dependencies]
 dev = [
