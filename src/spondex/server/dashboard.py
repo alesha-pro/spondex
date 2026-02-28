@@ -184,6 +184,16 @@ def create_dashboard_app(state: DaemonState, db: Database) -> FastAPI:
             "yandex": {"configured": cfg.is_yandex_configured()},
         }
 
+    @app.get("/api/charts/confidence")
+    async def api_charts_confidence() -> list[dict]:
+        return await db.get_confidence_distribution()
+
+    @app.get("/api/charts/activity")
+    async def api_charts_activity(
+        limit: int = Query(default=12, ge=1, le=30),
+    ) -> list[dict]:
+        return await db.get_sync_chart_data(limit)
+
     @app.post("/api/sync")
     async def api_sync_now(body: dict | None = None):  # noqa: ANN201
         if not state.scheduler:
@@ -222,28 +232,28 @@ def create_dashboard_app(state: DaemonState, db: Database) -> FastAPI:
 
     index_html = _STATIC_DIR / "index.html"
 
-    if _STATIC_DIR.is_dir():
-        # Serve Vite build output
-        if (_STATIC_DIR / "assets").is_dir():
-            app.mount(
-                "/assets",
-                StaticFiles(directory=str(_STATIC_DIR / "assets")),
-                name="assets",
-            )
+    if _STATIC_DIR.is_dir() and (_STATIC_DIR / "assets").is_dir():
+        app.mount(
+            "/assets",
+            StaticFiles(directory=str(_STATIC_DIR / "assets")),
+            name="assets",
+        )
 
-        # SPA fallback: serve index.html for all unmatched routes
-        @app.get("/{full_path:path}")
-        async def spa_fallback(full_path: str):  # noqa: ANN201
-            # Try serving the exact file first
-            file_path = _STATIC_DIR / full_path
-            if full_path and file_path.is_file():
-                return FileResponse(file_path)
-            # Fallback to index.html for SPA routing
-            if index_html.is_file():
-                return FileResponse(index_html)
-            return JSONResponse(
-                {"error": "dashboard not built — run 'npm run build' in dashboard/"},
-                status_code=404,
-            )
+    @app.get("/{full_path:path}")
+    async def spa_fallback(full_path: str):  # noqa: ANN201
+        # Never serve HTML for API or WebSocket paths.
+        if full_path.startswith(("api/", "ws")):
+            return JSONResponse({"error": "not found"}, status_code=404)
+        # Try serving the exact static file.
+        file_path = _STATIC_DIR / full_path
+        if full_path and file_path.is_file():
+            return FileResponse(file_path)
+        # SPA fallback — serve index.html.
+        if index_html.is_file():
+            return FileResponse(index_html)
+        return JSONResponse(
+            {"error": "dashboard not built — run 'npm run build' in src/dashboard/"},
+            status_code=404,
+        )
 
     return app

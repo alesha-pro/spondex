@@ -267,6 +267,43 @@ async def test_collections(_make_dashboard_client, dashboard_db: Database) -> No
 
 
 # ---------------------------------------------------------------------------
+# Chart endpoints
+# ---------------------------------------------------------------------------
+
+
+def test_charts_return_json_not_html(_make_dashboard_client) -> None:
+    client, _state, _db = _make_dashboard_client()
+
+    resp = client.get("/api/charts/confidence")
+    assert resp.status_code == 200
+    assert "text/html" not in resp.headers.get("content-type", "")
+    body = resp.json()
+    assert isinstance(body, list)
+
+    resp = client.get("/api/charts/activity?limit=5")
+    assert resp.status_code == 200
+    assert "text/html" not in resp.headers.get("content-type", "")
+    body = resp.json()
+    assert isinstance(body, list)
+
+
+@pytest.mark.asyncio
+async def test_confidence_chart_with_data(_make_dashboard_client, dashboard_db: Database) -> None:
+    await dashboard_db.upsert_track_mapping(
+        artist="A", title="B", spotify_id="s1", yandex_id="y1", match_confidence=1.0
+    )
+    await dashboard_db.upsert_track_mapping(
+        artist="C", title="D", spotify_id="s2", yandex_id="y2", match_confidence=0.85
+    )
+
+    client, _state, _db = _make_dashboard_client()
+    resp = client.get("/api/charts/confidence")
+    body = resp.json()
+    assert len(body) > 0
+    assert all("bucket" in b and "count" in b for b in body)
+
+
+# ---------------------------------------------------------------------------
 # SPA fallback
 # ---------------------------------------------------------------------------
 

@@ -505,6 +505,54 @@ class Database:
             for r in rows
         ]
 
+    async def get_confidence_distribution(self) -> list[dict]:
+        """Return confidence buckets for charting."""
+        cur = await self.conn.execute(
+            """
+            SELECT
+                CASE
+                    WHEN match_confidence >= 0.95 THEN 'exact'
+                    WHEN match_confidence >= 0.85 THEN 'high'
+                    WHEN match_confidence >= 0.70 THEN 'medium'
+                    ELSE 'low'
+                END AS bucket,
+                COUNT(*) AS count
+            FROM track_mapping
+            GROUP BY bucket
+            ORDER BY MIN(match_confidence) DESC
+            """
+        )
+        rows = await cur.fetchall()
+        return [{"bucket": row["bucket"], "count": row["count"]} for row in rows]
+
+    async def get_sync_chart_data(self, limit: int = 12) -> list[dict]:
+        """Return recent sync runs with parsed stats for charting."""
+        cur = await self.conn.execute(
+            "SELECT * FROM sync_runs WHERE status = 'completed' ORDER BY id DESC LIMIT ?",
+            (limit,),
+        )
+        rows = await cur.fetchall()
+        result = []
+        for row in rows:
+            run = self._row_to_sync_run(row)
+            stats: dict = {}
+            if run.stats_json:
+                import json
+                try:
+                    stats = json.loads(run.stats_json)
+                except (ValueError, TypeError):
+                    pass
+            result.append({
+                "id": run.id,
+                "started_at": str(run.started_at),
+                "mode": run.mode,
+                "sp_added": stats.get("sp_added", 0),
+                "ym_added": stats.get("ym_added", 0),
+                "cross_matched": stats.get("cross_matched", 0),
+                "unmatched": stats.get("unmatched", 0),
+            })
+        return list(reversed(result))
+
     # -- batch helpers --------------------------------------------------------
 
     async def get_track_mappings_by_ids(
