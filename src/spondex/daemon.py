@@ -165,16 +165,17 @@ class Daemon:
 
         # -- grandchild: the actual daemon process -----------------------------
 
-        # Redirect standard file descriptors.
+        # Redirect standard file descriptors to /dev/null.
+        # All real logging goes through structlog → RotatingFileHandler
+        # (configured in _run_daemon via setup_logging).
         sys.stdout.flush()
         sys.stderr.flush()
 
-        devnull = open(os.devnull, "rb")  # noqa: SIM115
-        log_fh = open(self.log_file, "ab")  # noqa: SIM115
+        devnull = open(os.devnull, "r+b")  # noqa: SIM115
 
         os.dup2(devnull.fileno(), sys.stdin.fileno())
-        os.dup2(log_fh.fileno(), sys.stdout.fileno())
-        os.dup2(log_fh.fileno(), sys.stderr.fileno())
+        os.dup2(devnull.fileno(), sys.stdout.fileno())
+        os.dup2(devnull.fileno(), sys.stderr.fileno())
 
         # Write PID and register cleanup.
         self._write_pid()
@@ -224,7 +225,17 @@ class Daemon:
         """Start the async main loop.
 
         Called inside the fully daemonized grandchild process.
+        Initialises structured logging before entering the event loop.
         """
+        from spondex.config import load_config
+        from spondex.logging import setup_logging
+
+        config = load_config()
+        setup_logging(
+            log_level=config.daemon.log_level,
+            log_dir=self.log_dir,
+        )
+
         asyncio.run(self._async_main())
 
     async def _async_main(self) -> None:

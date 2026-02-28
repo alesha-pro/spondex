@@ -166,12 +166,19 @@ def status() -> None:
 @app.command()
 def logs(
     tail_lines: int = typer.Option(50, "--lines", "-n", help="Number of lines to show"),
+    sync: bool = typer.Option(False, "--sync", help="Show sync.log (JSON) instead of daemon.log"),
+    follow: bool = typer.Option(False, "--follow", "-f", help="Follow log output (like tail -f)"),
 ) -> None:
     """Show recent daemon log output."""
-    log_file = get_base_dir() / "logs" / "daemon.log"
+    filename = "sync.log" if sync else "daemon.log"
+    log_file = get_base_dir() / "logs" / filename
     if not log_file.exists():
         console.print("[yellow]Log file not found:[/yellow] {path}".format(path=log_file))
         raise typer.Exit(1)
+
+    if follow:
+        _follow_log(log_file, tail_lines)
+        return
 
     with open(log_file, "r", encoding="utf-8") as fh:
         # Use a bounded deque to efficiently read only the last N lines
@@ -183,7 +190,51 @@ def logs(
         return
 
     for line in last_lines:
-        console.print(line, end="", highlight=False)
+        _print_log_line(line)
+
+
+def _log_line_style(line: str) -> str | None:
+    """Return a Rich style string based on the log level found in *line*."""
+    upper = line.upper()
+    if "ERROR" in upper or "CRITICAL" in upper:
+        return "red"
+    if "WARNING" in upper:
+        return "yellow"
+    if "DEBUG" in upper:
+        return "dim"
+    return None
+
+
+def _print_log_line(line: str) -> None:
+    """Print a single log line with level-based color highlighting."""
+    line = line.rstrip("\n")
+    if not line:
+        return
+    console.print(line, style=_log_line_style(line), highlight=False, markup=False)
+
+
+def _follow_log(log_file: Path, initial_lines: int = 10) -> None:
+    """Follow a log file, printing new lines as they appear (like ``tail -f``)."""
+    import time
+
+    # Show last N lines first.
+    with open(log_file, "r", encoding="utf-8") as fh:
+        last = deque(fh, maxlen=initial_lines)
+    for line in last:
+        _print_log_line(line)
+
+    # Then follow new output.
+    with open(log_file, "r", encoding="utf-8") as fh:
+        fh.seek(0, 2)  # seek to end
+        try:
+            while True:
+                line = fh.readline()
+                if line:
+                    _print_log_line(line)
+                else:
+                    time.sleep(0.5)
+        except KeyboardInterrupt:
+            pass
 
 
 # ---------------------------------------------------------------------------
