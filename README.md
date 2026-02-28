@@ -12,10 +12,46 @@ git clone <repo-url> && cd spondex
 uv sync
 ```
 
+## Предварительная настройка
+
+Перед первым запуском `spondex start` понадобятся учётные данные обоих сервисов. Мастер настройки запросит их интерактивно; ниже — как их получить заранее.
+
+### Токен Яндекс Музыки
+
+OAuth-токен можно получить через браузер (DevTools) или по инструкции:
+
+- [Получение токена Yandex Music](https://yandex-music.readthedocs.io/en/main/token.html)
+
+Полученный токен нужно будет ввести в wizard или позже задать командой:
+
+```bash
+spondex config set yandex.token <ваш_токен>
+```
+
+### Настройка приложения Spotify
+
+1. Откройте [Spotify Developer Dashboard](https://developer.spotify.com/dashboard/).
+2. Создайте новое приложение (Create app).
+3. В настройках приложения скопируйте **Client ID** и **Client Secret**.
+4. В разделе **Redirect URIs** добавьте URI для OAuth:
+   - `http://127.0.0.1:8888/callback`
+5. Сохраните изменения.
+
+При первом запуске wizard настройки запросит Client ID и Client Secret, откроет браузер для авторизации в Spotify и сохранит `refresh_token` в `~/.spondex/config.toml`.
+
+При необходимости задать данные вручную:
+
+```bash
+spondex config set spotify.client_id <client_id>
+spondex config set spotify.client_secret <client_secret>
+spondex config set spotify.redirect_uri "http://127.0.0.1:8888/callback"
+# refresh_token выдаётся после авторизации через браузер (wizard это делает автоматически)
+```
+
 ## Быстрый старт
 
 ```bash
-# Первый запуск — запускает мастер настройки
+# Первый запуск — запускает wizard настройки
 spondex start
 
 # Проверить статус
