@@ -85,7 +85,7 @@ def test_wizard_yandex_success():
 
     with (
         patch("spondex.wizard.YandexClient", return_value=mock_client),
-        patch("rich.prompt.Prompt.ask", return_value="valid-token"),
+        patch("rich.prompt.Prompt.ask", side_effect=["token", "valid-token"]),
     ):
         cfg = _wizard_yandex()
 
@@ -99,7 +99,7 @@ def test_wizard_yandex_invalid_then_skip():
 
     with (
         patch("spondex.wizard.YandexClient", return_value=mock_client),
-        patch("rich.prompt.Prompt.ask", return_value="bad-token"),
+        patch("rich.prompt.Prompt.ask", side_effect=["token", "bad-token"]),
         patch("rich.prompt.Confirm.ask", return_value=False),
     ):
         cfg = _wizard_yandex()
@@ -170,6 +170,7 @@ def test_run_wizard_full_flow():
                 "sp-client-id",  # Spotify client_id
                 "sp-client-sec",  # Spotify client_secret
                 "http://127.0.0.1:8888/callback",  # Spotify redirect_uri
+                "token",  # Yandex auth method
                 "ym-token",  # Yandex token
                 "full",  # Sync mode
                 "15",  # Sync interval
@@ -215,3 +216,34 @@ def test_wizard_spotify_headless_pasted_url():
     assert oauth_cls.call_args.kwargs["open_browser"] is False
     mock_oauth.get_access_token.assert_called_once_with("the-code", as_dict=True, check_cache=False)
     assert cfg.refresh_token.get_secret_value() == "r"
+
+
+def test_wizard_yandex_device_login_stores_refresh_token():
+    """Device login returns access + refresh token and an expiry."""
+    import time
+
+    oauth = MagicMock(access_token="dev-access", refresh_token="dev-refresh", expires_in=31536000)
+    code = MagicMock(verification_url="https://ya.ru/device", user_code="ABCD", expires_in=300)
+
+    def device_auth(on_code):
+        on_code(code)
+        return oauth
+
+    login_client = MagicMock()
+    login_client.device_auth.side_effect = device_auth
+    check_client = MagicMock()
+    check_client.init.return_value = check_client
+    check_client.me.account.display_name = "YmUser"
+
+    def make_client(*args):
+        return check_client if args else login_client
+
+    with (
+        patch("spondex.wizard.YandexClient", side_effect=make_client),
+        patch("rich.prompt.Prompt.ask", return_value="device"),
+    ):
+        cfg = _wizard_yandex()
+
+    assert cfg.token.get_secret_value() == "dev-access"
+    assert cfg.refresh_token.get_secret_value() == "dev-refresh"
+    assert cfg.expires_at > time.time() + 300 * 24 * 3600

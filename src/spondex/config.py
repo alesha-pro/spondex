@@ -72,6 +72,11 @@ class YandexConfig(BaseModel):
     """Yandex Music API credentials."""
 
     token: SecretStr = Field(default=SecretStr(""), description="Yandex Music OAuth token")
+    refresh_token: SecretStr = Field(
+        default=SecretStr(""),
+        description="Yandex OAuth refresh token (device-flow login); enables automatic token renewal",
+    )
+    expires_at: int = Field(default=0, description="Unix time when `token` expires (0 = unknown)")
 
 
 class AppConfig(BaseModel):
@@ -212,3 +217,18 @@ def save_config(config: AppConfig) -> None:
     path = get_base_dir() / _CONFIG_FILE
     path.write_text(_dump_toml(config), encoding="utf-8")
     os.chmod(path, 0o600)
+
+
+def persist_fields(section: str, **values: object) -> None:
+    """Update a few fields of one config section on disk.
+
+    Re-reads the file first so that concurrent edits (e.g. ``spondex config
+    set`` while the daemon runs) are not overwritten. Used by the sync
+    clients to store rotated/renewed OAuth tokens.
+    """
+    cfg = load_config()
+    section_model = getattr(cfg, section)
+    data = section_model.model_dump(mode="python")
+    data.update(values)
+    setattr(cfg, section, type(section_model)(**data))
+    save_config(cfg)

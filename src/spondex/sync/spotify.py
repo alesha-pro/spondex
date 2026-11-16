@@ -11,10 +11,12 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Callable
 from datetime import datetime
 
 import httpx
 import structlog
+from pydantic import SecretStr
 
 from spondex.config import SpotifyConfig
 from spondex.sync.differ import RemoteTrack
@@ -36,6 +38,12 @@ class SpotifyAPIError(Exception):
     """Raised for non-retryable Spotify API errors."""
 
 
+def _persist_refresh_token(token: str) -> None:
+    from spondex.config import persist_fields
+
+    persist_fields("spotify", refresh_token=SecretStr(token))
+
+
 class SpotifyClient:
     """Async Spotify Web API client with automatic token refresh."""
 
@@ -44,9 +52,11 @@ class SpotifyClient:
         config: SpotifyConfig,
         *,
         _transport: httpx.AsyncBaseTransport | None = None,
+        on_refresh_token: Callable[[str], None] | None = None,
     ) -> None:
         self._config = config
         self._transport = _transport
+        self._on_refresh_token = on_refresh_token if on_refresh_token is not None else _persist_refresh_token
         self._access_token: str | None = None
         self._token_expires_at: float = 0.0
         self._client: httpx.AsyncClient | None = None
@@ -83,6 +93,16 @@ class SpotifyClient:
             raise SpotifyAuthError(f"Token refresh failed: {resp.status_code} {resp.text}")
 
         data = resp.json()
+        new_refresh = data.get("refresh_token")
+        if new_refresh and new_refresh != self._config.refresh_token.get_secret_value():
+            # Spotify may rotate the refresh token; the old one stops working,
+            # so keep the new one both in memory and on disk.
+            self._config.refresh_token = SecretStr(new_refresh)
+            try:
+                self._on_refresh_token(new_refresh)
+                log.info("spotify refresh token rotated and saved")
+            except Exception:
+                log.exception("failed to persist rotated spotify refresh token")
         self._access_token = data["access_token"]
         self._token_expires_at = time.time() + data.get("expires_in", 3600)
         return self._access_token
@@ -132,8 +152,8 @@ class SpotifyClient:
             if resp.status_code == 401 and attempt > 0:
                 raise SpotifyAuthError(
                     "Spotify authentication failed after token refresh. "
-                    "Your refresh_token may be invalid — run: "
-                    "spondex config set spotify.refresh_token <new_token>"
+                    "Your refresh_token may be invalid — re-authorize with: "
+                    "spondex auth spotify"
                 )
 
             if resp.status_code == 429:

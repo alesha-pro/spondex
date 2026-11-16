@@ -121,34 +121,67 @@ def _wizard_spotify(headless: bool = False) -> SpotifyConfig:
 # ---------------------------------------------------------------------------
 
 
+def _yandex_device_login() -> YandexConfig | None:
+    """Log in via OAuth Device Flow; returns config with a refresh token."""
+    from spondex.sync.yandex import tokens_from_oauth_response
+
+    def on_code(code) -> None:  # noqa: ANN001
+        console.print(
+            f"\nOpen [bold]{code.verification_url}[/bold] on any device and enter the code: "
+            f"[bold cyan]{code.user_code}[/bold cyan]\n"
+            f"Waiting for confirmation (up to {code.expires_in // 60} min)...\n"
+        )
+
+    try:
+        oauth = YandexClient().device_auth(on_code=on_code)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Yandex login failed:[/red] {exc}")
+        return None
+
+    tokens = tokens_from_oauth_response(
+        {"access_token": oauth.access_token, "refresh_token": oauth.refresh_token, "expires_in": oauth.expires_in}
+    )
+    return YandexConfig(
+        token=SecretStr(tokens.access_token),
+        refresh_token=SecretStr(tokens.refresh_token),
+        expires_at=tokens.expires_at,
+    )
+
+
+def _yandex_token_prompt() -> YandexConfig | None:
+    token = Prompt.ask("Yandex Music token", password=True).strip()
+    if not token:
+        console.print("[yellow]Token cannot be empty.[/yellow]")
+        return None
+    return YandexConfig(token=SecretStr(token))
+
+
 def _wizard_yandex() -> YandexConfig:
-    """Prompt for a Yandex Music token and validate it."""
+    """Authorize Yandex Music (device login or pasted token) and validate it."""
     console.print("[bold]Step 2: Yandex Music[/bold]")
     console.print(
-        "Enter your Yandex Music OAuth token.\nYou can obtain it using browser dev-tools or a dedicated helper.\n"
+        "[bold]device[/bold] — log in with a code on the Yandex page; the token is renewed automatically.\n"
+        "[bold]token[/bold]  — paste an existing OAuth token (expires in ~1 year, no automatic renewal).\n"
     )
 
     while True:
-        token = Prompt.ask("Yandex Music token", password=True).strip()
+        method = Prompt.ask("Authorization method", choices=["device", "token"], default="device")
+        cfg = _yandex_device_login() if method == "device" else _yandex_token_prompt()
 
-        if not token:
-            console.print("[yellow]Token cannot be empty. Try again.[/yellow]")
-            continue
+        if cfg is not None:
+            console.print("Validating token...")
+            try:
+                client = YandexClient(cfg.token.get_secret_value()).init()
+                name = client.me.account.display_name or client.me.account.login
+                console.print(f"[green]Yandex Music authorized[/green] as [bold]{name}[/bold].\n")
+                return cfg
+            except Exception:  # noqa: BLE001, S110
+                pass
 
-        console.print("Validating token...")
-        try:
-            client = YandexClient(token).init()
-            name = client.me.account.display_name or client.me.account.login
-            console.print(f"[green]Yandex Music authorized[/green] as [bold]{name}[/bold].\n")
-            return YandexConfig(token=SecretStr(token))
-        except Exception:  # noqa: BLE001
-            retry = Confirm.ask(
-                "[red]Token validation failed.[/red] Try again?",
-                default=True,
-            )
-            if not retry:
-                console.print("[yellow]Skipping Yandex Music setup.[/yellow]\n")
-                return YandexConfig()
+        retry = Confirm.ask("[red]Yandex authorization failed.[/red] Try again?", default=True)
+        if not retry:
+            console.print("[yellow]Skipping Yandex Music setup.[/yellow]\n")
+            return YandexConfig()
 
 
 # ---------------------------------------------------------------------------

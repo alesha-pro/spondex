@@ -200,7 +200,9 @@ Current Configuration
   refresh_token  = ***
 
 [yandex]
-  token = ***
+  token         = ***
+  refresh_token = ***
+  expires_at    = 2027-11-16
 ```
 
 ---
@@ -251,6 +253,8 @@ spondex config set <key> <value>
 | Ключ | Тип | По умолчанию | Описание |
 |------|-----|-------------|----------|
 | `yandex.token` | `SecretStr` | *(пусто)* | OAuth-токен Яндекс Музыки |
+| `yandex.refresh_token` | `SecretStr` | *(пусто)* | Refresh token (вход по коду); с ним токен продлевается автоматически |
+| `yandex.expires_at` | `int` | `0` | Unix-время истечения `yandex.token` (0 — неизвестно) |
 
 **Примеры:**
 
@@ -267,7 +271,7 @@ spondex config set sync.propagate_deletions false
 # Задать порт дашборда
 spondex config set daemon.dashboard_port 8080
 
-# Задать токен Yandex Music
+# Задать токен Yandex Music вручную (сбрасывает refresh_token — автопродления не будет)
 spondex config set yandex.token <ваш_токен>
 
 # Задать учётные данные Spotify
@@ -324,4 +328,4 @@ spondex db status
 | `SPONDEX_DASHBOARD_HOST` | `127.0.0.1` | Адрес, на котором слушает дашборд |
 | `SPONDEX_HEADLESS` | — | `1` — мастер не открывает браузер, redirect URL вставляется вручную |
 
-Дополнительные команды: `spondex setup [--headless] [--force]` — только мастер настройки; `spondex run` — демон в foreground (для Docker/systemd).
+Дополнительные команды: `spondex setup [--headless] [--force]` — только мастер настройки; `spondex auth spotify|yandex [--headless]` — повторный вход в один сервис; `spondex run` — демон в foreground (для Docker/systemd).

@@ -541,3 +541,44 @@ def test_run_starts_foreground_daemon(cli_base_dir: Path):
 
     assert result.exit_code == 0
     mock_run.assert_called_once()
+
+
+def test_auth_yandex_updates_only_yandex_section(cli_base_dir: Path):
+    from pydantic import SecretStr
+
+    from spondex.config import AppConfig, SpotifyConfig, YandexConfig, load_config, save_config
+
+    save_config(AppConfig(spotify=SpotifyConfig(client_id="keep-me")))
+    new = YandexConfig(token=SecretStr("t"), refresh_token=SecretStr("r"), expires_at=123)
+    with patch("spondex.wizard._wizard_yandex", return_value=new):
+        result = runner.invoke(app, ["auth", "yandex"])
+
+    assert result.exit_code == 0, result.output
+    cfg = load_config()
+    assert cfg.yandex.refresh_token.get_secret_value() == "r"
+    assert cfg.yandex.expires_at == 123
+    assert cfg.spotify.client_id == "keep-me"
+
+
+def test_auth_failed_keeps_config(cli_base_dir: Path):
+    from spondex.config import YandexConfig
+
+    with patch("spondex.wizard._wizard_yandex", return_value=YandexConfig()):
+        result = runner.invoke(app, ["auth", "yandex"])
+    assert result.exit_code == 1
+    assert not (cli_base_dir / "config.toml").exists()
+
+
+def test_config_set_yandex_token_clears_refresh_pair(cli_base_dir: Path):
+    from pydantic import SecretStr
+
+    from spondex.config import AppConfig, YandexConfig, load_config, save_config
+
+    save_config(AppConfig(yandex=YandexConfig(token=SecretStr("a"), refresh_token=SecretStr("r"), expires_at=5)))
+    result = runner.invoke(app, ["config", "set", "yandex.token", "manual"])
+
+    assert result.exit_code == 0
+    cfg = load_config()
+    assert cfg.yandex.token.get_secret_value() == "manual"
+    assert cfg.yandex.refresh_token.get_secret_value() == ""
+    assert cfg.yandex.expires_at == 0
