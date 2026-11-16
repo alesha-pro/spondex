@@ -413,3 +413,13 @@ def test_load_config_warns_on_bad_permissions(base_dir: Path):
 
     assert len(w) >= 1
     assert "permissive" in str(w[0].message).lower() or "permission" in str(w[0].message).lower()
+
+
+def test_get_base_dir_env_override(tmp_path, monkeypatch):
+    from spondex.config import get_base_dir
+
+    monkeypatch.setenv("SPONDEX_HOME", str(tmp_path / "data"))
+    assert get_base_dir() == tmp_path / "data"
+
+    monkeypatch.delenv("SPONDEX_HOME")
+    assert get_base_dir().name == ".spondex"

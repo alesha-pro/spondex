@@ -15,3 +15,6 @@ wheels/
 src/dashboard/node_modules/
 src/spondex/server/static/*
 !src/spondex/server/static/.gitkeep
+# Docker
+.env
+data/

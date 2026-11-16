@@ -1,0 +1,26 @@
+services:
+  spondex:
+    build:
+      context: .
+      args:
+        UID: ${SPONDEX_UID:-1000}
+        GID: ${SPONDEX_GID:-1000}
+    image: spondex:local
+    container_name: spondex
+    restart: unless-stopped
+    init: true
+    # The scheduler waits for an in-progress sync on SIGTERM.
+    stop_grace_period: 60s
+    environment:
+      TZ: ${TZ:-UTC}
+    volumes:
+      # config.toml, spondex.db, logs/, daemon.sock
+      - ${SPONDEX_DATA_DIR:-./data}:/data
+    ports:
+      # Dashboard has no auth — bind to a private interface only.
+      - "${SPONDEX_BIND:-127.0.0.1}:${SPONDEX_PORT:-9847}:9847"
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"

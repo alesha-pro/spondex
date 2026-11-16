@@ -193,3 +193,19 @@ class TestStaleSocketCleanup:
         # ConnectionRefused / OSError → removed
         ensure_clean_socket(sock_path)
         assert not sock_path.exists()
+
+
+def test_run_foreground_ignores_stale_pid_file(base_dir, monkeypatch):
+    """A stale PID file (e.g. PID reused after container restart) must not block startup."""
+    from spondex.daemon import Daemon
+
+    d = Daemon()
+    d.pid_path.write_text("1")  # PID 1 always exists
+    called = {}
+    monkeypatch.setattr(d, "_run_daemon", lambda **kw: called.update(kw))
+    monkeypatch.setattr("atexit.register", lambda fn: None)
+
+    d.run_foreground()
+
+    assert called == {"console": True}
+    assert d.get_pid() == __import__("os").getpid()

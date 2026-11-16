@@ -2,8 +2,10 @@
 
 Endpoints:
 - GET /me/tracks (listing liked tracks)
-- PUT /me/tracks (save tracks, body: {"ids": [...]})
-- DELETE /me/tracks (remove tracks, body: {"ids": [...]})
+- PUT /me/library (save, query ``uris=spotify:track:...``, max 40)
+- DELETE /me/library (remove, same format)
+
+``PUT/DELETE /me/tracks`` were removed in the February 2026 Web API changes.
 - GET /search (limit max 10)
 """
 
@@ -11,10 +13,12 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Callable
 from datetime import datetime
 
 import httpx
 import structlog
+from pydantic import SecretStr
 
 from spondex.config import SpotifyConfig
 from spondex.sync.differ import RemoteTrack
@@ -23,7 +27,7 @@ log = structlog.get_logger(__name__)
 
 _API_BASE = "https://api.spotify.com/v1"
 _TOKEN_URL = "https://accounts.spotify.com/api/token"  # noqa: S105
-_BATCH_SIZE = 50
+_LIBRARY_BATCH_SIZE = 40  # max URIs per /me/library request
 _SEARCH_LIMIT = 10
 _MAX_RETRIES = 3
 
@@ -36,6 +40,12 @@ class SpotifyAPIError(Exception):
     """Raised for non-retryable Spotify API errors."""
 
 
+def _persist_refresh_token(token: str) -> None:
+    from spondex.config import persist_fields
+
+    persist_fields("spotify", refresh_token=SecretStr(token))
+
+
 class SpotifyClient:
     """Async Spotify Web API client with automatic token refresh."""
 
@@ -44,9 +54,11 @@ class SpotifyClient:
         config: SpotifyConfig,
         *,
         _transport: httpx.AsyncBaseTransport | None = None,
+        on_refresh_token: Callable[[str], None] | None = None,
     ) -> None:
         self._config = config
         self._transport = _transport
+        self._on_refresh_token = on_refresh_token if on_refresh_token is not None else _persist_refresh_token
         self._access_token: str | None = None
         self._token_expires_at: float = 0.0
         self._client: httpx.AsyncClient | None = None
@@ -83,6 +95,16 @@ class SpotifyClient:
             raise SpotifyAuthError(f"Token refresh failed: {resp.status_code} {resp.text}")
 
         data = resp.json()
+        new_refresh = data.get("refresh_token")
+        if new_refresh and new_refresh != self._config.refresh_token.get_secret_value():
+            # Spotify may rotate the refresh token; the old one stops working,
+            # so keep the new one both in memory and on disk.
+            self._config.refresh_token = SecretStr(new_refresh)
+            try:
+                self._on_refresh_token(new_refresh)
+                log.info("spotify refresh token rotated and saved")
+            except Exception:
+                log.exception("failed to persist rotated spotify refresh token")
         self._access_token = data["access_token"]
         self._token_expires_at = time.time() + data.get("expires_in", 3600)
         return self._access_token
@@ -132,8 +154,8 @@ class SpotifyClient:
             if resp.status_code == 401 and attempt > 0:
                 raise SpotifyAuthError(
                     "Spotify authentication failed after token refresh. "
-                    "Your refresh_token may be invalid — run: "
-                    "spondex config set spotify.refresh_token <new_token>"
+                    "Your refresh_token may be invalid — re-authorize with: "
+                    "spondex auth spotify"
                 )
 
             if resp.status_code == 429:
@@ -218,16 +240,18 @@ class SpotifyClient:
         return tracks
 
     async def save_tracks(self, track_ids: list[str]) -> None:
-        """Save tracks to the user's library in batches of 50."""
-        for i in range(0, len(track_ids), _BATCH_SIZE):
-            batch = track_ids[i : i + _BATCH_SIZE]
-            await self._request("PUT", f"{_API_BASE}/me/tracks", json={"ids": batch})
+        """Save tracks to the user's library in batches of 40."""
+        await self._library_request("PUT", track_ids)
 
     async def remove_tracks(self, track_ids: list[str]) -> None:
-        """Remove tracks from the user's library in batches of 50."""
-        for i in range(0, len(track_ids), _BATCH_SIZE):
-            batch = track_ids[i : i + _BATCH_SIZE]
-            await self._request("DELETE", f"{_API_BASE}/me/tracks", json={"ids": batch})
+        """Remove tracks from the user's library in batches of 40."""
+        await self._library_request("DELETE", track_ids)
+
+    async def _library_request(self, method: str, track_ids: list[str]) -> None:
+        for i in range(0, len(track_ids), _LIBRARY_BATCH_SIZE):
+            batch = track_ids[i : i + _LIBRARY_BATCH_SIZE]
+            uris = ",".join(f"spotify:track:{tid}" for tid in batch)
+            await self._request(method, f"{_API_BASE}/me/library", params={"uris": uris})
 
     async def search_track(self, artist: str, title: str) -> RemoteTrack | None:
         """Search for a track on Spotify by artist and title.

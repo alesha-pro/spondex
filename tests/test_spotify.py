@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
 
 import httpx
@@ -178,16 +177,20 @@ async def test_get_liked_tracks_since_early_stop() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _library_uris(request: httpx.Request) -> list[str]:
+    return request.url.params["uris"].split(",")
+
+
 @pytest.mark.asyncio
 async def test_save_tracks_batching() -> None:
-    """save_tracks splits into batches of 50."""
-    put_bodies: list[dict] = []
+    """save_tracks uses PUT /me/library with track URIs, 40 per request."""
+    batches: list[list[str]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.host == "accounts.spotify.com":
             return _token_response()
-        if request.method == "PUT" and str(request.url).startswith("https://api.spotify.com/v1/me/tracks"):
-            put_bodies.append(json.loads(request.content))
+        if request.method == "PUT" and request.url.path == "/v1/me/library":
+            batches.append(_library_uris(request))
             return httpx.Response(200)
         return httpx.Response(404)
 
@@ -199,11 +202,9 @@ async def test_save_tracks_batching() -> None:
     async with SpotifyClient(config, _transport=transport) as client:
         await client.save_tracks(track_ids)
 
-    assert len(put_bodies) == 2
-    assert len(put_bodies[0]["ids"]) == 50
-    assert len(put_bodies[1]["ids"]) == 25
-    assert put_bodies[0]["ids"][0] == "id0"
-    assert put_bodies[1]["ids"][-1] == "id74"
+    assert [len(b) for b in batches] == [40, 35]
+    assert batches[0][0] == "spotify:track:id0"
+    assert batches[1][-1] == "spotify:track:id74"
 
 
 # ---------------------------------------------------------------------------
@@ -213,14 +214,14 @@ async def test_save_tracks_batching() -> None:
 
 @pytest.mark.asyncio
 async def test_remove_tracks() -> None:
-    """remove_tracks sends DELETE with correct URIs."""
-    delete_bodies: list[dict] = []
+    """remove_tracks uses DELETE /me/library with track URIs."""
+    batches: list[list[str]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.host == "accounts.spotify.com":
             return _token_response()
-        if request.method == "DELETE" and str(request.url).startswith("https://api.spotify.com/v1/me/tracks"):
-            delete_bodies.append(json.loads(request.content))
+        if request.method == "DELETE" and request.url.path == "/v1/me/library":
+            batches.append(_library_uris(request))
             return httpx.Response(200)
         return httpx.Response(404)
 
@@ -230,8 +231,7 @@ async def test_remove_tracks() -> None:
     async with SpotifyClient(config, _transport=transport) as client:
         await client.remove_tracks(["abc", "def", "ghi"])
 
-    assert len(delete_bodies) == 1
-    assert delete_bodies[0]["ids"] == ["abc", "def", "ghi"]
+    assert batches == [["spotify:track:abc", "spotify:track:def", "spotify:track:ghi"]]
 
 
 # ---------------------------------------------------------------------------
@@ -380,7 +380,7 @@ async def test_401_double_fail_actionable_message() -> None:
     config = _make_config()
 
     async with SpotifyClient(config, _transport=transport) as client:
-        with pytest.raises(SpotifyAuthError, match="config set"):
+        with pytest.raises(SpotifyAuthError, match="spondex auth spotify"):
             await client.get_liked_tracks()
 
 
@@ -446,3 +446,63 @@ async def test_network_retry_exhausted(monkeypatch: pytest.MonkeyPatch) -> None:
     async with SpotifyClient(config, _transport=transport) as client:
         with pytest.raises(SpotifyAPIError, match="Network error"):
             await client.get_liked_tracks()
+
+
+# ---------------------------------------------------------------------------
+# Refresh token rotation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_rotated_refresh_token_is_kept_and_persisted() -> None:
+    saved: list[str] = []
+    seen_refresh: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "accounts.spotify.com":
+            form = dict(httpx.QueryParams(request.content.decode()))
+            seen_refresh.append(form["refresh_token"])
+            return httpx.Response(
+                200, json={"access_token": "acc", "expires_in": 0, "refresh_token": "rotated-refresh"}
+            )
+        return httpx.Response(200, json=_liked_tracks_page([]))
+
+    config = _make_config()
+    async with SpotifyClient(config, _transport=httpx.MockTransport(handler), on_refresh_token=saved.append) as c:
+        await c.get_liked_tracks()  # expires_in=0 → next call refreshes again
+        await c.get_liked_tracks()
+
+    assert saved == ["rotated-refresh"]
+    assert config.refresh_token.get_secret_value() == "rotated-refresh"
+    assert seen_refresh == ["test-refresh-token", "rotated-refresh"]
+
+
+@pytest.mark.asyncio
+async def test_unchanged_refresh_token_not_persisted() -> None:
+    saved: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "accounts.spotify.com":
+            return httpx.Response(
+                200, json={"access_token": "acc", "expires_in": 3600, "refresh_token": "test-refresh-token"}
+            )
+        return httpx.Response(200, json=_liked_tracks_page([]))
+
+    transport = httpx.MockTransport(handler)
+    async with SpotifyClient(_make_config(), _transport=transport, on_refresh_token=saved.append) as c:
+        await c.get_liked_tracks()
+
+    assert saved == []
+
+
+def test_persist_fields_updates_only_given_field(base_dir) -> None:
+    from pydantic import SecretStr
+
+    from spondex.config import AppConfig, SpotifyConfig, load_config, persist_fields, save_config
+
+    save_config(AppConfig(spotify=SpotifyConfig(client_id="cid", refresh_token=SecretStr("old"))))
+    persist_fields("spotify", refresh_token=SecretStr("new"))
+
+    cfg = load_config()
+    assert cfg.spotify.refresh_token.get_secret_value() == "new"
+    assert cfg.spotify.client_id == "cid"

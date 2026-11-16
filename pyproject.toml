@@ -22,7 +22,7 @@ dependencies = [
     "pydantic>=2.0",
     "structlog>=23.0",
     "spotipy>=2.25.2",
-    "yandex-music>=2.2.0",
+    "yandex-music>=3.2.2",
     "aiosqlite>=0.19",
 ]
 

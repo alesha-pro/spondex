@@ -136,7 +136,7 @@ def start() -> None:
         from spondex.wizard import run_wizard
 
         console.print("[yellow]No configuration found. Starting setup wizard...[/yellow]\n")
-        cfg = run_wizard()
+        cfg = run_wizard(headless=_env_flag("SPONDEX_HEADLESS"))
         save_config(cfg)
         console.print("[green]Configuration saved.[/green]\n")
 
@@ -147,6 +147,87 @@ def start() -> None:
 
     daemon.start()
     console.print(f"[green]Daemon started[/green] (PID {daemon.get_pid()}).")
+
+
+def _env_flag(name: str) -> bool:
+    import os
+
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+@app.command()
+def setup(
+    headless: bool = typer.Option(
+        False,
+        "--headless",
+        help="Don't open a browser; paste the Spotify redirect URL manually (env: SPONDEX_HEADLESS=1).",
+    ),
+    force: bool = typer.Option(False, "--force", help="Overwrite an existing configuration."),
+) -> None:
+    """Run the interactive setup wizard and save the configuration."""
+    from spondex.wizard import run_wizard
+
+    ensure_dirs()
+    if config_exists() and not force:
+        console.print(
+            f"[yellow]Configuration already exists[/yellow] at {get_base_dir() / 'config.toml'}. "
+            "Use [bold]--force[/bold] to overwrite.",
+        )
+        raise typer.Exit(1)
+
+    cfg = run_wizard(headless=headless or _env_flag("SPONDEX_HEADLESS"))
+    save_config(cfg)
+    console.print(f"[green]Configuration saved[/green] to {get_base_dir() / 'config.toml'}.")
+
+
+@app.command()
+def auth(
+    service: str = typer.Argument(help="Service to re-authorize: spotify or yandex"),
+    headless: bool = typer.Option(
+        False,
+        "--headless",
+        help="Don't open a browser for Spotify; paste the redirect URL manually (env: SPONDEX_HEADLESS=1).",
+    ),
+) -> None:
+    """Re-authorize one service without re-running the whole setup wizard."""
+    from spondex.config import persist_fields
+    from spondex.wizard import _wizard_spotify, _wizard_yandex
+
+    ensure_dirs()
+    if service == "spotify":
+        section = _wizard_spotify(headless=headless or _env_flag("SPONDEX_HEADLESS"))
+        ok = bool(section.refresh_token.get_secret_value())
+    elif service == "yandex":
+        section = _wizard_yandex()
+        ok = bool(section.token.get_secret_value())
+    else:
+        console.print("[red]Unknown service.[/red] Use [bold]spotify[/bold] or [bold]yandex[/bold].")
+        raise typer.Exit(1)
+
+    if not ok:
+        console.print("[red]Authorization was not completed; configuration unchanged.[/red]")
+        raise typer.Exit(1)
+
+    persist_fields(service, **dict(section))
+    console.print(
+        f"[green]{service.capitalize()} credentials saved.[/green] "
+        "Restart the daemon to apply them (spondex restart, or docker compose restart)."
+    )
+
+
+@app.command()
+def run() -> None:
+    """Run the daemon in the foreground (no fork) — for Docker / systemd."""
+    from spondex.daemon import Daemon
+
+    ensure_dirs()
+    if not config_exists():
+        console.print(
+            "[yellow]No configuration found.[/yellow] Run [bold]spondex setup[/bold] first; "
+            "starting with defaults (sync disabled until credentials are set).",
+        )
+    console.print(f"Spondex daemon running in foreground (data: {get_base_dir()}).")
+    Daemon().run_foreground()
 
 
 @app.command()
@@ -408,7 +489,13 @@ def config_show() -> None:
     console.print(f"  refresh_token  = {_mask(cfg.spotify.refresh_token)}")
 
     console.print("\n[bold cyan]\\[yandex][/bold cyan]")
-    console.print(f"  token = {_mask(cfg.yandex.token)}")
+    console.print(f"  token         = {_mask(cfg.yandex.token)}")
+    console.print(f"  refresh_token = {_mask(cfg.yandex.refresh_token)}")
+    if cfg.yandex.expires_at:
+        from datetime import datetime
+
+        expires = datetime.fromtimestamp(cfg.yandex.expires_at, tz=UTC).strftime("%Y-%m-%d")
+        console.print(f"  expires_at    = {expires}")
     console.print()
 
 
@@ -459,6 +546,11 @@ def config_set(
     # Rebuild the section with the updated value
     section_data = section_model.model_dump(mode="python")
     section_data[field_name] = coerced
+    if section_name == "yandex" and field_name == "token":
+        # A manually set token replaces the device-login pair; an old refresh
+        # token would otherwise overwrite it on the next renewal.
+        section_data["refresh_token"] = SecretStr("")
+        section_data["expires_at"] = 0
 
     new_section = type(section_model)(**section_data)
     setattr(cfg, section_name, new_section)

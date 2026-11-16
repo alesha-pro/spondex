@@ -18,6 +18,8 @@ from pathlib import Path
 import structlog
 
 _MAX_BYTES = 10 * 1024 * 1024  # 10 MB
+
+_SECRET_LEAKING_LOGGERS = ("yandex_music", "spotipy", "httpx", "httpcore", "hpack", "urllib3", "requests")
 _BACKUP_COUNT = 5
 
 # Shared structlog pre-processors (used for both structlog-originated
@@ -33,7 +35,7 @@ _shared_processors: list[structlog.types.Processor] = [
 ]
 
 
-def setup_logging(log_level: str = "info", log_dir: Path | None = None) -> None:
+def setup_logging(log_level: str = "info", log_dir: Path | None = None, *, console: bool = False) -> None:
     """Configure structlog and stdlib logging for the daemon.
 
     Parameters
@@ -43,6 +45,9 @@ def setup_logging(log_level: str = "info", log_dir: Path | None = None) -> None:
     log_dir:
         Directory for log files.  When *None* no file handlers are created
         (useful for testing).
+    console:
+        Also write human-readable logs to stdout (foreground / Docker mode,
+        so that ``docker logs`` shows them).
     """
     level = getattr(logging, log_level.upper(), logging.INFO)
 
@@ -97,9 +102,21 @@ def setup_logging(log_level: str = "info", log_dir: Path | None = None) -> None:
         sync_handler.addFilter(logging.Filter("spondex.sync"))
         root.addHandler(sync_handler)
 
+    if console:
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setFormatter(human_formatter)
+        root.addHandler(console_handler)
+
     # -- suppress noisy third-party loggers --------------------------------
-    for name in ("uvicorn", "uvicorn.access", "uvicorn.error", "httpx", "httpcore"):
+    for name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
         logging.getLogger(name).setLevel(max(level, logging.WARNING))
+
+    # -- never let third-party debug output reach the logs ----------------
+    # Even with log_level=debug: yandex-music logs method results (an
+    # OAuthToken renders access/refresh tokens), spotipy logs Authorization
+    # headers, and HTTP libraries may log request details.
+    for name in _SECRET_LEAKING_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)
 
     # -- catch unhandled exceptions ----------------------------------------
     def _excepthook(

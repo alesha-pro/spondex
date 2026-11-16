@@ -415,3 +415,52 @@ def test_is_good_match_fuzzy_duration_tolerance_boundary():
         query_duration_ms=240000,
         found_duration_ms=241000,  # exactly 1s difference
     )
+
+
+class FlakySaveClient(MockClient):
+    """Spotify mock whose writes fail until ``fail`` is switched off."""
+
+    fail = True
+
+    async def save_tracks(self, ids):
+        if self.fail:
+            raise RuntimeError("Spotify API error: 403")
+        await super().save_tracks(ids)
+
+
+def _flaky_setup():
+    sp = FlakySaveClient(search_results={"YmArt YmSong": _sp_track("sp_found", "YmArt", "YmSong")})
+    ym = MockClient(liked_tracks=[_ym_track("ym1", "YmArt", "YmSong")])
+    return sp, ym
+
+
+@pytest.mark.asyncio
+async def test_failed_write_is_retried_on_next_full_sync(db):
+    """A track whose write failed is not considered synced and is saved later."""
+    sp, ym = _flaky_setup()
+    engine = SyncEngine(_make_config(), db, sp_factory=_mock_factory(sp), ym_factory=_mock_factory(ym))
+
+    first = await engine.run_sync(mode="full")
+    assert first.errors >= 1
+    assert sp.saved_ids == []
+    assert [u.source_id for u in await db.list_unmatched("yandex")] == ["ym1"]
+
+    sp.fail = False
+    second = await engine.run_sync(mode="full")
+    assert sp.saved_ids == ["sp_found"]
+    assert second.retried_ok == 1
+    assert await db.list_unmatched("yandex") == []
+
+
+@pytest.mark.asyncio
+async def test_orphans_without_unmatched_entry_are_requeued(db):
+    """Tracks left without a counterpart and without an unmatched entry get retried."""
+    sp, ym = _flaky_setup()
+    engine = SyncEngine(_make_config(), db, sp_factory=_mock_factory(sp), ym_factory=_mock_factory(ym))
+    await engine.run_sync(mode="full")
+    await db.resolve_unmatched("yandex", "ym1")  # state left by older versions
+
+    sp.fail = False
+    stats = await engine.run_sync(mode="full")
+    assert sp.saved_ids == ["sp_found"]
+    assert stats.retried_ok == 1

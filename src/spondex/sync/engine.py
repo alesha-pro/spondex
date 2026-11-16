@@ -289,7 +289,9 @@ class SyncEngine:
             existing_ym_ids=remote_ym_ids,
         )
 
-        # 6. Retry unmatched
+        # 6. Queue tracks that were recorded but never reached the other side
+        #    (e.g. a write failed in an earlier run), then retry unmatched
+        await self._queue_orphans(mappings_by_id, sp_mapping_ids, ym_mapping_ids, remote_sp_ids, remote_ym_ids)
         await self._retry_unmatched(sp, ym, sp_col_id, ym_col_id, stats)
 
     # ── INCREMENTAL SYNC ───────────────────────────────────────────────────
@@ -492,6 +494,7 @@ class SyncEngine:
             except Exception as exc:
                 log.warning("sp_propagate_error", error=str(exc))
                 stats.errors += 1
+                await self._queue_for_retry("spotify", track)
 
         # Yandex → Spotify
         for track in unmatched_ym:
@@ -550,6 +553,34 @@ class SyncEngine:
             except Exception as exc:
                 log.warning("ym_propagate_error", error=str(exc))
                 stats.errors += 1
+                await self._queue_for_retry("yandex", track)
+
+    async def _queue_for_retry(self, source_service: str, track) -> None:
+        """Put a track whose propagation failed into ``unmatched`` so a full sync retries it."""
+        try:
+            await self._db.add_unmatched(
+                source_service=source_service,
+                source_id=track.remote_id,
+                artist=track.artist,
+                title=track.title,
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.warning("queue_for_retry_error", error=str(exc))
+
+    async def _queue_orphans(self, mappings_by_id, sp_mapping_ids, ym_mapping_ids, remote_sp_ids, remote_ym_ids):
+        """Queue liked tracks missing from the other side's collection that are not already queued."""
+        queued = {(u.source_service, u.source_id) for u in await self._db.list_unmatched()}
+        for mid, m in mappings_by_id.items():
+            if mid in sp_mapping_ids and mid not in ym_mapping_ids and m.spotify_id in remote_sp_ids:
+                source, source_id = "spotify", m.spotify_id
+            elif mid in ym_mapping_ids and mid not in sp_mapping_ids and m.yandex_id in remote_ym_ids:
+                source, source_id = "yandex", m.yandex_id
+            else:
+                continue
+            if (source, source_id) in queued:
+                continue
+            await self._db.add_unmatched(source_service=source, source_id=source_id, artist=m.artist, title=m.title)
+            log.info("orphan_queued", source=source, track=f"{m.artist} — {m.title}")
 
     async def _retry_unmatched(self, sp, ym, sp_col_id, ym_col_id, stats):
         """Retry previously unmatched tracks (full sync only)."""

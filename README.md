@@ -46,6 +46,16 @@ git clone https://github.com/alesha-pro/spondex.git && cd spondex
 uv sync
 ```
 
+### Docker
+
+```bash
+cp .env.example .env
+docker compose run --rm -it spondex spondex setup   # headless-мастер
+docker compose up -d
+```
+
+Подробнее: [docs/DOCKER.md](docs/DOCKER.md)
+
 ## 🚀 Быстрый старт
 
 ```bash
@@ -83,11 +93,16 @@ spondex stop        # Остановить демон
 
 Перед первым запуском понадобятся учётные данные обоих сервисов. Мастер настройки запросит их интерактивно.
 
-🟡 Токен Яндекс Музыки
+🟡 Яндекс Музыка
 
-OAuth-токен можно получить через браузер (DevTools) или по инструкции:
+Рекомендуемый способ — вход по коду (device flow): мастер покажет код, его нужно ввести на странице Яндекса.
+Spondex получит `refresh_token` и будет продлевать токен сам, за 30 дней до истечения.
 
-- [Получение токена Yandex Music](https://yandex-music.readthedocs.io/en/main/token.html)
+```bash
+spondex auth yandex          # повторный вход только в Яндекс
+```
+
+Можно вставить готовый OAuth-токен ([как получить](https://yandex-music.readthedocs.io/en/main/token.html)), но он живёт ~1 год и сам не продлевается:
 
 ```bash
 spondex config set yandex.token <ваш_токен>
@@ -109,7 +124,7 @@ spondex config set spotify.client_secret <client_secret>
 spondex config set spotify.redirect_uri "http://127.0.0.1:8888/callback"
 ```
 
-При первом запуске wizard откроет браузер для авторизации и сохранит `refresh_token` автоматически.
+При первом запуске wizard откроет браузер для авторизации и сохранит `refresh_token` автоматически. Если Spotify выдаст новый `refresh_token` при обновлении, демон сохранит его в конфиг. Повторный вход: `spondex auth spotify`.
 
 
 
@@ -128,7 +143,7 @@ spondex config set sync.interval_minutes 15  # изменение
 | **daemon**  | `dashboard_port`, `log_level`                                        |
 | **sync**    | `interval_minutes`, `mode` (full/incremental), `propagate_deletions` |
 | **spotify** | `client_id`, `client_secret`, `redirect_uri`, `refresh_token`        |
-| **yandex**  | `token`                                                              |
+| **yandex**  | `token`, `refresh_token`, `expires_at`                               |
 
 
 ## 🏗 Архитектура

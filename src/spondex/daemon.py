@@ -112,6 +112,20 @@ class Daemon:
         """Write the current process PID to the PID file."""
         self.pid_path.write_text(str(os.getpid()))
 
+    def _socket_alive(self) -> bool:
+        """Return *True* if something is accepting connections on the RPC socket."""
+        if not self.socket_path.exists():
+            return False
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            sock.connect(str(self.socket_path))
+        except OSError:
+            return False
+        else:
+            return True
+        finally:
+            sock.close()
+
     def _cleanup(self) -> None:
         """Remove the PID file and socket file if they exist."""
         self.pid_path.unlink(missing_ok=True)
@@ -186,6 +200,29 @@ class Daemon:
 
         self._run_daemon()
 
+    def run_foreground(self) -> None:
+        """Run the daemon in the current process without forking.
+
+        Intended for containers and process supervisors (Docker, systemd):
+        the process stays attached, logs also go to stdout, and SIGTERM
+        triggers the same graceful shutdown as the RPC ``shutdown`` command.
+        """
+        # A PID file left over from a previous container may point at a PID
+        # that is reused in the new PID namespace, so only trust a socket
+        # that actually accepts connections.
+        if self._socket_alive():
+            log.warning("daemon already running", pid=self.get_pid())
+            sys.exit(1)
+
+        self.base_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        self.log_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        os.umask(0o077)
+
+        self._write_pid()
+        atexit.register(self._cleanup)
+
+        self._run_daemon(console=True)
+
     def stop(self) -> None:
         """Send SIGTERM to the running daemon and wait for it to exit."""
         pid = self.get_pid()
@@ -222,7 +259,7 @@ class Daemon:
 
     # -- Internal daemon loop -----------------------------------------------
 
-    def _run_daemon(self) -> None:
+    def _run_daemon(self, *, console: bool = False) -> None:
         """Start the async main loop.
 
         Called inside the fully daemonized grandchild process.
@@ -235,6 +272,7 @@ class Daemon:
         setup_logging(
             log_level=config.daemon.log_level,
             log_dir=self.log_dir,
+            console=console,
         )
 
         asyncio.run(self._async_main())
@@ -292,7 +330,7 @@ class Daemon:
         dashboard_app = create_dashboard_app(state, db)
         dashboard_config = uvicorn.Config(
             dashboard_app,
-            host="127.0.0.1",
+            host=os.environ.get("SPONDEX_DASHBOARD_HOST", "127.0.0.1"),
             port=app_config.daemon.dashboard_port,
             log_level="info",
             loop="asyncio",
