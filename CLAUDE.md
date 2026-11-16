@@ -41,7 +41,9 @@ CLI (typer) ──httpx──► UDS ──► FastAPI RPC Server ──► Daem
 
 Исходники в `src/spondex/`, build backend — hatchling. Entry point: `spondex = "spondex.cli:app"`.
 
-Runtime-файлы демона — в `~/.spondex/` (config.toml, daemon.pid, daemon.sock, logs/).
+Runtime-файлы демона — в `~/.spondex/` (config.toml, daemon.pid, daemon.sock, logs/); переопределяется `SPONDEX_HOME`.
+
+Docker: `Dockerfile` + `compose.yaml`, в контейнере `spondex run` (foreground, без fork), данные в `/data`. См. `docs/DOCKER.md`.
 
 ## Ключевые паттерны
 

@@ -191,3 +191,9 @@ def test_context_variables_in_sync_log(tmp_path: Path):
     data = json.loads((log_dir / "sync.log").read_text().strip())
     assert data["service"] == "spotify"
     assert data["operation"] == "fetch_likes"
+
+
+def test_console_handler_writes_to_stdout(capsys):
+    setup_logging(log_level="info", log_dir=None, console=True)
+    logging.getLogger("spondex.test").info("hello-console")
+    assert "hello-console" in capsys.readouterr().out

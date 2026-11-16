@@ -22,7 +22,14 @@ _LOG_DIR = "logs"
 
 
 def get_base_dir() -> Path:
-    """Return the base directory for all Spondex runtime files (~/.spondex/)."""
+    """Return the base directory for all Spondex runtime files.
+
+    Defaults to ``~/.spondex/``; can be overridden with the ``SPONDEX_HOME``
+    environment variable (used by the Docker image to point at a volume).
+    """
+    override = os.environ.get("SPONDEX_HOME")
+    if override:
+        return Path(override).expanduser()
     return Path.home() / _BASE_DIR_NAME
 
 

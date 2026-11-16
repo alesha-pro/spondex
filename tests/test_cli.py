@@ -507,3 +507,37 @@ def test_human_time_invalid():
     from spondex.cli import _human_time
 
     assert _human_time("not-a-date") == "not-a-date"
+
+
+# ---------------------------------------------------------------------------
+# setup / run (Docker-friendly commands)
+# ---------------------------------------------------------------------------
+
+
+def test_setup_saves_config(cli_base_dir: Path, monkeypatch: pytest.MonkeyPatch):
+    from spondex.config import AppConfig
+
+    monkeypatch.setenv("SPONDEX_HEADLESS", "1")
+    with patch("spondex.wizard.run_wizard", return_value=AppConfig()) as mock_wizard:
+        result = runner.invoke(app, ["setup"])
+
+    assert result.exit_code == 0
+    mock_wizard.assert_called_once_with(headless=True)
+    assert (cli_base_dir / "config.toml").exists()
+
+
+def test_setup_refuses_overwrite_without_force(cli_base_dir: Path):
+    (cli_base_dir / "config.toml").write_text('[daemon]\nlog_level = "info"\n')
+    with patch("spondex.wizard.run_wizard") as mock_wizard:
+        result = runner.invoke(app, ["setup"])
+
+    assert result.exit_code == 1
+    mock_wizard.assert_not_called()
+
+
+def test_run_starts_foreground_daemon(cli_base_dir: Path):
+    with patch("spondex.daemon.Daemon.run_foreground") as mock_run:
+        result = runner.invoke(app, ["run"])
+
+    assert result.exit_code == 0
+    mock_run.assert_called_once()

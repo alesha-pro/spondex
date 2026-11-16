@@ -136,7 +136,7 @@ def start() -> None:
         from spondex.wizard import run_wizard
 
         console.print("[yellow]No configuration found. Starting setup wizard...[/yellow]\n")
-        cfg = run_wizard()
+        cfg = run_wizard(headless=_env_flag("SPONDEX_HEADLESS"))
         save_config(cfg)
         console.print("[green]Configuration saved.[/green]\n")
 
@@ -147,6 +147,52 @@ def start() -> None:
 
     daemon.start()
     console.print(f"[green]Daemon started[/green] (PID {daemon.get_pid()}).")
+
+
+def _env_flag(name: str) -> bool:
+    import os
+
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+@app.command()
+def setup(
+    headless: bool = typer.Option(
+        False,
+        "--headless",
+        help="Don't open a browser; paste the Spotify redirect URL manually (env: SPONDEX_HEADLESS=1).",
+    ),
+    force: bool = typer.Option(False, "--force", help="Overwrite an existing configuration."),
+) -> None:
+    """Run the interactive setup wizard and save the configuration."""
+    from spondex.wizard import run_wizard
+
+    ensure_dirs()
+    if config_exists() and not force:
+        console.print(
+            f"[yellow]Configuration already exists[/yellow] at {get_base_dir() / 'config.toml'}. "
+            "Use [bold]--force[/bold] to overwrite.",
+        )
+        raise typer.Exit(1)
+
+    cfg = run_wizard(headless=headless or _env_flag("SPONDEX_HEADLESS"))
+    save_config(cfg)
+    console.print(f"[green]Configuration saved[/green] to {get_base_dir() / 'config.toml'}.")
+
+
+@app.command()
+def run() -> None:
+    """Run the daemon in the foreground (no fork) — for Docker / systemd."""
+    from spondex.daemon import Daemon
+
+    ensure_dirs()
+    if not config_exists():
+        console.print(
+            "[yellow]No configuration found.[/yellow] Run [bold]spondex setup[/bold] first; "
+            "starting with defaults (sync disabled until credentials are set).",
+        )
+    console.print(f"Spondex daemon running in foreground (data: {get_base_dir()}).")
+    Daemon().run_foreground()
 
 
 @app.command()

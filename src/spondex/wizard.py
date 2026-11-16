@@ -13,7 +13,7 @@ from pydantic import SecretStr
 from rich.console import Console
 from rich.prompt import Confirm, Prompt
 from spotipy.cache_handler import MemoryCacheHandler
-from spotipy.oauth2 import SpotifyOAuth
+from spotipy.oauth2 import SpotifyOAuth, SpotifyOauthError
 from yandex_music import Client as YandexClient
 
 from spondex.config import AppConfig, SpotifyConfig, SyncConfig, YandexConfig
@@ -30,7 +30,35 @@ SPOTIFY_SCOPES = (
 # ---------------------------------------------------------------------------
 
 
-def _wizard_spotify() -> SpotifyConfig:
+def _spotify_token_headless(sp_oauth: SpotifyOAuth) -> dict | None:
+    """Run the OAuth code flow without a local browser or callback server.
+
+    The user opens the authorize URL on any machine, gets redirected to the
+    (unreachable) redirect URI, and pastes the full redirected URL back here.
+    """
+    auth_url = sp_oauth.get_authorize_url()
+    console.print("\nOpen this URL in a browser on any device and authorize the app:\n")
+    # soft_wrap: never insert hard line breaks into the URL, so it stays copyable.
+    console.print(auth_url, soft_wrap=True, markup=False, highlight=False)
+    console.print(
+        "\nThe browser will be redirected to the redirect URI and will probably show\n"
+        "an error page — that's expected. Copy the full URL from the address bar\n"
+        "(it contains [bold]?code=...[/bold]) and paste it below.\n"
+    )
+    while True:
+        redirected = Prompt.ask("Redirected URL").strip()
+        code = sp_oauth.parse_response_code(redirected)
+        if code and code != redirected:
+            break
+        console.print("[yellow]No ?code= parameter found in that URL. Try again.[/yellow]")
+    try:
+        return sp_oauth.get_access_token(code, as_dict=True, check_cache=False)
+    except SpotifyOauthError as exc:
+        console.print(f"[red]Spotify rejected the authorization code:[/red] {exc}")
+        return None
+
+
+def _wizard_spotify(headless: bool = False) -> SpotifyConfig:
     """Walk the user through Spotify OAuth and return populated config."""
     console.print("[bold]Step 1: Spotify[/bold]")
     console.print(
@@ -53,16 +81,19 @@ def _wizard_spotify() -> SpotifyConfig:
         redirect_uri=redirect_uri,
         scope=SPOTIFY_SCOPES,
         cache_handler=MemoryCacheHandler(),
-        open_browser=True,
+        open_browser=not headless,
     )
 
-    console.print("\nOpening browser for Spotify authorization...")
-    auth_url = sp_oauth.get_authorize_url()
-    console.print(f"If the browser does not open, visit:\n  [link]{auth_url}[/link]\n")
+    if headless:
+        token_info = _spotify_token_headless(sp_oauth)
+    else:
+        console.print("\nOpening browser for Spotify authorization...")
+        auth_url = sp_oauth.get_authorize_url()
+        console.print(f"If the browser does not open, visit:\n  [link]{auth_url}[/link]\n")
 
-    # get_access_token() handles the full flow: opens browser, starts local
-    # callback server, waits for the redirect, exchanges the code for tokens.
-    token_info = sp_oauth.get_access_token(as_dict=True)
+        # get_access_token() handles the full flow: opens browser, starts local
+        # callback server, waits for the redirect, exchanges the code for tokens.
+        token_info = sp_oauth.get_access_token(as_dict=True)
 
     if not token_info or "refresh_token" not in token_info:
         console.print("[red]Failed to obtain Spotify tokens.[/red]")
@@ -153,12 +184,16 @@ def _wizard_sync() -> SyncConfig:
 # ---------------------------------------------------------------------------
 
 
-def run_wizard() -> AppConfig:
-    """Run the interactive setup wizard and return a populated AppConfig."""
+def run_wizard(headless: bool = False) -> AppConfig:
+    """Run the interactive setup wizard and return a populated AppConfig.
+
+    With *headless* the Spotify step does not open a browser or start a
+    local callback server; the user pastes the redirected URL instead.
+    """
     console.print("\n[bold cyan]Spondex Setup Wizard[/bold cyan]")
     console.print("Let's configure your music library sync.\n")
 
-    spotify_cfg = _wizard_spotify()
+    spotify_cfg = _wizard_spotify(headless=headless)
     yandex_cfg = _wizard_yandex()
     sync_cfg = _wizard_sync()
 

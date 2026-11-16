@@ -184,3 +184,34 @@ def test_run_wizard_full_flow():
     assert config.yandex.token.get_secret_value() == "ym-token"
     assert config.sync.mode == "full"
     assert config.sync.interval_minutes == 15
+
+
+def test_wizard_spotify_headless_pasted_url():
+    """Headless mode exchanges the code parsed from a pasted redirect URL."""
+    mock_oauth = MagicMock()
+    mock_oauth.get_authorize_url.return_value = "https://accounts.spotify.com/authorize?..."
+    mock_oauth.parse_response_code.side_effect = lambda url: "the-code" if "code=" in url else url
+    mock_oauth.get_access_token.return_value = {"access_token": "a", "refresh_token": "r"}
+
+    mock_sp = MagicMock()
+    mock_sp.current_user.return_value = {"id": "u"}
+
+    with (
+        patch("spondex.wizard.SpotifyOAuth", return_value=mock_oauth) as oauth_cls,
+        patch("spondex.wizard.spotipy.Spotify", return_value=mock_sp),
+        patch(
+            "rich.prompt.Prompt.ask",
+            side_effect=[
+                "id",
+                "secret",
+                "http://127.0.0.1:8888/callback",
+                "garbage",  # rejected: no code
+                "http://127.0.0.1:8888/callback?code=the-code&state=x",
+            ],
+        ),
+    ):
+        cfg = _wizard_spotify(headless=True)
+
+    assert oauth_cls.call_args.kwargs["open_browser"] is False
+    mock_oauth.get_access_token.assert_called_once_with("the-code", as_dict=True, check_cache=False)
+    assert cfg.refresh_token.get_secret_value() == "r"

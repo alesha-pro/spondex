@@ -46,6 +46,16 @@ git clone https://github.com/alesha-pro/spondex.git && cd spondex
 uv sync
 ```
 
+### Docker
+
+```bash
+cp .env.example .env
+docker compose run --rm -it spondex spondex setup   # headless-мастер
+docker compose up -d
+```
+
+Подробнее: [docs/DOCKER.md](docs/DOCKER.md)
+
 ## 🚀 Быстрый старт
 
 ```bash
