@@ -197,3 +197,22 @@ def test_console_handler_writes_to_stdout(capsys):
     setup_logging(log_level="info", log_dir=None, console=True)
     logging.getLogger("spondex.test").info("hello-console")
     assert "hello-console" in capsys.readouterr().out
+
+
+def test_third_party_debug_never_logged(tmp_path: Path):
+    """Even at debug level, libraries that may render tokens are capped at WARNING."""
+    log_dir = tmp_path / "logs"
+    setup_logging(log_level="debug", log_dir=log_dir)
+
+    from yandex_music import OAuthToken
+
+    logging.getLogger("yandex_music._client").debug(OAuthToken(access_token="SECRET-A", refresh_token="SECRET-R"))
+    logging.getLogger("spotipy.oauth2").debug("Headers: {'Authorization': 'Basic SECRET-B'}")
+    logging.getLogger("httpx").debug("SECRET-H")
+    logging.getLogger("spondex.test").debug("own-debug-visible")
+
+    for h in logging.getLogger().handlers:
+        h.flush()
+    text = (log_dir / "daemon.log").read_text()
+    assert "own-debug-visible" in text
+    assert "SECRET" not in text

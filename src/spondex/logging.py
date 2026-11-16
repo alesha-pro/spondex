@@ -18,6 +18,8 @@ from pathlib import Path
 import structlog
 
 _MAX_BYTES = 10 * 1024 * 1024  # 10 MB
+
+_SECRET_LEAKING_LOGGERS = ("yandex_music", "spotipy", "httpx", "httpcore", "hpack", "urllib3", "requests")
 _BACKUP_COUNT = 5
 
 # Shared structlog pre-processors (used for both structlog-originated
@@ -106,8 +108,15 @@ def setup_logging(log_level: str = "info", log_dir: Path | None = None, *, conso
         root.addHandler(console_handler)
 
     # -- suppress noisy third-party loggers --------------------------------
-    for name in ("uvicorn", "uvicorn.access", "uvicorn.error", "httpx", "httpcore"):
+    for name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
         logging.getLogger(name).setLevel(max(level, logging.WARNING))
+
+    # -- never let third-party debug output reach the logs ----------------
+    # Even with log_level=debug: yandex-music logs method results (an
+    # OAuthToken renders access/refresh tokens), spotipy logs Authorization
+    # headers, and HTTP libraries may log request details.
+    for name in _SECRET_LEAKING_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)
 
     # -- catch unhandled exceptions ----------------------------------------
     def _excepthook(
