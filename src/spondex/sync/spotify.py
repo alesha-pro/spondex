@@ -2,8 +2,10 @@
 
 Endpoints:
 - GET /me/tracks (listing liked tracks)
-- PUT /me/tracks (save tracks, body: {"ids": [...]})
-- DELETE /me/tracks (remove tracks, body: {"ids": [...]})
+- PUT /me/library (save, query ``uris=spotify:track:...``, max 40)
+- DELETE /me/library (remove, same format)
+
+``PUT/DELETE /me/tracks`` were removed in the February 2026 Web API changes.
 - GET /search (limit max 10)
 """
 
@@ -25,7 +27,7 @@ log = structlog.get_logger(__name__)
 
 _API_BASE = "https://api.spotify.com/v1"
 _TOKEN_URL = "https://accounts.spotify.com/api/token"  # noqa: S105
-_BATCH_SIZE = 50
+_LIBRARY_BATCH_SIZE = 40  # max URIs per /me/library request
 _SEARCH_LIMIT = 10
 _MAX_RETRIES = 3
 
@@ -238,16 +240,18 @@ class SpotifyClient:
         return tracks
 
     async def save_tracks(self, track_ids: list[str]) -> None:
-        """Save tracks to the user's library in batches of 50."""
-        for i in range(0, len(track_ids), _BATCH_SIZE):
-            batch = track_ids[i : i + _BATCH_SIZE]
-            await self._request("PUT", f"{_API_BASE}/me/tracks", json={"ids": batch})
+        """Save tracks to the user's library in batches of 40."""
+        await self._library_request("PUT", track_ids)
 
     async def remove_tracks(self, track_ids: list[str]) -> None:
-        """Remove tracks from the user's library in batches of 50."""
-        for i in range(0, len(track_ids), _BATCH_SIZE):
-            batch = track_ids[i : i + _BATCH_SIZE]
-            await self._request("DELETE", f"{_API_BASE}/me/tracks", json={"ids": batch})
+        """Remove tracks from the user's library in batches of 40."""
+        await self._library_request("DELETE", track_ids)
+
+    async def _library_request(self, method: str, track_ids: list[str]) -> None:
+        for i in range(0, len(track_ids), _LIBRARY_BATCH_SIZE):
+            batch = track_ids[i : i + _LIBRARY_BATCH_SIZE]
+            uris = ",".join(f"spotify:track:{tid}" for tid in batch)
+            await self._request(method, f"{_API_BASE}/me/library", params={"uris": uris})
 
     async def search_track(self, artist: str, title: str) -> RemoteTrack | None:
         """Search for a track on Spotify by artist and title.

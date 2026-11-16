@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
 
 import httpx
@@ -178,16 +177,20 @@ async def test_get_liked_tracks_since_early_stop() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _library_uris(request: httpx.Request) -> list[str]:
+    return request.url.params["uris"].split(",")
+
+
 @pytest.mark.asyncio
 async def test_save_tracks_batching() -> None:
-    """save_tracks splits into batches of 50."""
-    put_bodies: list[dict] = []
+    """save_tracks uses PUT /me/library with track URIs, 40 per request."""
+    batches: list[list[str]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.host == "accounts.spotify.com":
             return _token_response()
-        if request.method == "PUT" and str(request.url).startswith("https://api.spotify.com/v1/me/tracks"):
-            put_bodies.append(json.loads(request.content))
+        if request.method == "PUT" and request.url.path == "/v1/me/library":
+            batches.append(_library_uris(request))
             return httpx.Response(200)
         return httpx.Response(404)
 
@@ -199,11 +202,9 @@ async def test_save_tracks_batching() -> None:
     async with SpotifyClient(config, _transport=transport) as client:
         await client.save_tracks(track_ids)
 
-    assert len(put_bodies) == 2
-    assert len(put_bodies[0]["ids"]) == 50
-    assert len(put_bodies[1]["ids"]) == 25
-    assert put_bodies[0]["ids"][0] == "id0"
-    assert put_bodies[1]["ids"][-1] == "id74"
+    assert [len(b) for b in batches] == [40, 35]
+    assert batches[0][0] == "spotify:track:id0"
+    assert batches[1][-1] == "spotify:track:id74"
 
 
 # ---------------------------------------------------------------------------
@@ -213,14 +214,14 @@ async def test_save_tracks_batching() -> None:
 
 @pytest.mark.asyncio
 async def test_remove_tracks() -> None:
-    """remove_tracks sends DELETE with correct URIs."""
-    delete_bodies: list[dict] = []
+    """remove_tracks uses DELETE /me/library with track URIs."""
+    batches: list[list[str]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.host == "accounts.spotify.com":
             return _token_response()
-        if request.method == "DELETE" and str(request.url).startswith("https://api.spotify.com/v1/me/tracks"):
-            delete_bodies.append(json.loads(request.content))
+        if request.method == "DELETE" and request.url.path == "/v1/me/library":
+            batches.append(_library_uris(request))
             return httpx.Response(200)
         return httpx.Response(404)
 
@@ -230,8 +231,7 @@ async def test_remove_tracks() -> None:
     async with SpotifyClient(config, _transport=transport) as client:
         await client.remove_tracks(["abc", "def", "ghi"])
 
-    assert len(delete_bodies) == 1
-    assert delete_bodies[0]["ids"] == ["abc", "def", "ghi"]
+    assert batches == [["spotify:track:abc", "spotify:track:def", "spotify:track:ghi"]]
 
 
 # ---------------------------------------------------------------------------
